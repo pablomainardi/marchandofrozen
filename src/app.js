@@ -29,9 +29,9 @@ app.use("/", indexRouter);
 app.use("/products", productsRouter);
 app.use("/recipes", recipesRouter);
 app.use("/costs", costsRouter);
-
+//process.env.PORT || y en package json nodemon /src/app.js
 // Puerto de escucha
-const PORT = 8080;
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`Servidor en funcionamiento en el puerto ${PORT}`);
 });
