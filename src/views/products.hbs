@@ -1,0 +1,83 @@
+<link rel="stylesheet" type="text/css" href="/css/products.css" />
+
+<nav>
+  <button class="action-button" id="addProductBtn">Producto Nuevo</button>
+</nav>
+<hr />
+<div id="formContainer"></div>
+<div id="updateFormContainer" style="display: none;"></div>
+<!-- Contenedor para el formulario de actualización -->
+
+<h1>PRODUCTOS</h1>
+
+<ul id="productList">
+  {{#each products}}
+    <li class="product-item" id="{{this._id}}">
+      <div class="product-info">
+        <h3>{{this.name}}</h3>
+        <label for="brand" style="pointer-events: none;">Marca:</label>
+        <input
+          type="text"
+          id="brand"
+          name="brand"
+          value="{{this.brand}}"
+          disabled
+        />
+        <label for="price" style="pointer-events: none;">Precio:</label>
+        <input
+          type="number"
+          id="price"
+          name="price"
+          value="{{this.price}}"
+          disabled
+        />
+        <label for="unitOfPresentation">Unidad de Presentación:</label>
+        <input
+          type="text"
+          id="unitOfPresentation"
+          name="unitOfPresentation"
+          value="{{this.unitOfPresentation}}"
+          readonly
+        />
+        <label
+          for="presentation"
+          style="pointer-events: none;"
+        >Presentación:</label>
+        <input
+          type="number"
+          id="presentation"
+          name="presentation"
+          value="{{this.presentation}}"
+          disabled
+        />
+
+        <label for="unitCostOfPresentation">Unidad de Presentación:</label>
+        <input
+          type="number"
+          id="unitCostOfPresentation"
+          name="unitCostOfPresentation"
+          value="{{this.unitCostOfPresentation}}"
+          readonly
+        />
+
+        <label for="category" style="pointer-events: none;">Categoría:</label>
+        <input
+          type="text"
+          id="category"
+          name="category"
+          value="{{this.category}}"
+          disabled
+        />
+        <button
+          class="edit-btn"
+          onclick="enableProductFields('{{this._id}}')"
+        >Editar</button>
+        <button class="delete-btn" value="{{this._id}}">Eliminar</button>
+      </div>
+    </li>
+  {{/each}}
+</ul>
+
+<hr />
+
+<script src="/js/product.js"></script>

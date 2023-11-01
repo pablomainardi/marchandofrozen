@@ -1,0 +1,96 @@
+/* Estilos para el formulario de ingredientes */
+#crear-receta-container {
+  padding: 20px;
+}
+
+.ingredientes {
+  /* display: flex;
+  flex-wrap: wrap;
+  justify-content: center; */
+  align-items: center;
+  background-color: #f9f9f9;
+  border: 1px solid #ddd;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.ingredientes div {
+  margin-right: 10px;
+}
+
+.ingredientes label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+
+.ingredientes input[type="text"],
+.ingredientes input[type="number"] {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.ingredientes button {
+  display: flex;
+  justify-content: space-between;
+}
+
+button {
+  background-color: #4caf50;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+/* Estilos para el listado de recetas */
+.recipe-card {
+  border: 1px solid #ddd;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.ingredient-card {
+  background-color: #f9f9f9;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.recipe-card h3 {
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.ingredient-card p {
+  margin-bottom: 5px;
+}
+
+.btn-total-agregar {
+  display: flex;
+  justify-content: space-between;
+}
+.totalrecetatext p {
+  font-weight: bolder;
+}
+.totalrecetatext {
+  display: block;
+  text-align: center;
+  background-color: #79f;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.inputName {
+  font-weight: bold;
+  font-size: 20px;
+}
+
+.btn-del-update {
+  display: flex;
+  justify-content: space-between;
+}
+/* Otros estilos que puedes ajustar según tu preferencia */
