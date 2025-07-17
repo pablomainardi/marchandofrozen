@@ -1,5 +1,6 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file, jsonify
 import sqlite3
+from functools import wraps
 from datetime import datetime, timedelta
 import pandas as pd
 import io
@@ -10,17 +11,47 @@ app = Flask(__name__)
 app.secret_key = 'marchando'
 DB_NAME = 'marchando_base.db'
 
+ACCESS_CODE = '2511'  # poné tu código seguro aquí
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('logged_in'):
+            return redirect(url_for('login', next=request.path))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        code = request.form.get('code', '')
+        if code == ACCESS_CODE:
+            session['logged_in'] = True
+            next_page = request.args.get('next') or url_for('index')
+            return redirect(next_page)
+        else:
+            flash('Código incorrecto, intenta otra vez.', 'danger')
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('Has cerrado sesión.', 'info')
+    return redirect(url_for('login'))
+
 def get_conn():
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     return conn
 
 @app.route('/')
+@login_required
 def index():
     return render_template('index.html')
 
 # === CLIENTES ===
 @app.route('/clientes')
+@login_required
 def clientes():
     with get_conn() as conn:
         clientes = conn.execute('''
@@ -34,6 +65,7 @@ def clientes():
     return render_template('clientes.html', clientes=clientes)
 
 @app.route('/clientes/nuevo', methods=['POST'])
+@login_required
 def nuevo_cliente():
     data = request.form
     with get_conn() as conn:
@@ -43,6 +75,7 @@ def nuevo_cliente():
     return redirect(url_for('clientes'))
 
 @app.route('/clientes/editar/<int:id>', methods=['POST'])
+@login_required
 def editar_cliente(id):
     data = request.form
     with get_conn() as conn:
@@ -52,6 +85,7 @@ def editar_cliente(id):
     return redirect(url_for('clientes'))
 
 @app.route('/clientes/eliminar/<int:id>')
+@login_required
 def eliminar_cliente(id):
     with get_conn() as conn:
         conn.execute('DELETE FROM clientes WHERE id=?', (id,))
@@ -60,6 +94,7 @@ def eliminar_cliente(id):
 
 # === INGREDIENTES ===
 @app.route('/ingredientes/editar/<int:id>', methods=['POST'])
+@login_required
 def editar_ingrediente(id):
     data = request.form
     producto = data['producto']
@@ -88,6 +123,7 @@ def editar_ingrediente(id):
     return redirect(url_for('modificar_ingredientes'))
 
 @app.route('/ingredientes/eliminar/<int:id>')
+@login_required
 def eliminar_ingrediente(id):
     with get_conn() as conn:
         conn.execute('DELETE FROM ingredientes WHERE id = ?', (id,))
@@ -96,6 +132,7 @@ def eliminar_ingrediente(id):
     return redirect(url_for('modificar_ingredientes'))
 
 @app.route('/ingredientes/agregar', methods=['POST'])
+@login_required
 def agregar_ingrediente():
     data = request.form
     producto = data['producto']
@@ -117,6 +154,7 @@ def agregar_ingrediente():
     return redirect(url_for('modificar_ingredientes'))
 
 @app.route('/modificar_ingredientes')
+@login_required
 def modificar_ingredientes():
     with get_conn() as conn:
         ingredientes_raw = conn.execute('SELECT * FROM ingredientes ORDER BY producto').fetchall()
@@ -133,6 +171,7 @@ def modificar_ingredientes():
 
 
 @app.route('/exportar_ingredientes')
+@login_required
 def exportar_ingredientes():
     with get_conn() as conn:
         df = pd.read_sql_query("SELECT producto, cantidad, unidad, costo_total, tipo, comentario FROM ingredientes", conn)
@@ -144,6 +183,7 @@ def exportar_ingredientes():
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 @app.route('/importar_ingredientes', methods=['POST'])
+@login_required
 def importar_ingredientes():
     archivo = request.files.get('archivo_excel')
     if not archivo:
@@ -185,6 +225,7 @@ def importar_ingredientes():
 
 
 @app.route('/buscar_ingrediente')
+@login_required
 def buscar_ingrediente():
     termino = request.args.get('q', '')
     with get_conn() as conn:
@@ -195,6 +236,7 @@ def buscar_ingrediente():
 
 # === RECETAS ===
 @app.route('/eliminar_receta/<int:id>')
+@login_required
 def eliminar_receta(id):
     with get_conn() as conn:
         conn.execute('DELETE FROM recetas WHERE id = ?', (id,))
@@ -204,6 +246,7 @@ def eliminar_receta(id):
     return redirect(url_for('ver_recetas'))
 
 @app.route('/recetas')
+@login_required
 def ver_recetas():
     with get_conn() as conn:
         recetas = conn.execute('''
@@ -220,6 +263,7 @@ def ver_recetas():
     return render_template('modificar_recetas.html', recetas=recetas)
 
 @app.route('/nueva_receta', methods=['GET', 'POST'])
+@login_required
 def nueva_receta():
     if request.method == 'POST':
         nombre = request.form['nombre']
@@ -231,6 +275,7 @@ def nueva_receta():
     return render_template('nueva_receta.html')
 
 @app.route("/receta/<int:receta_id>")
+@login_required
 def ver_receta(receta_id):
     conn = get_conn()
     receta = conn.execute("SELECT * FROM recetas WHERE id = ?", (receta_id,)).fetchone()
@@ -259,6 +304,7 @@ def ver_receta(receta_id):
 
 # === PRESUPUESTO ===
 @app.route("/presupuesto", methods=["GET", "POST"])
+@login_required
 def presupuesto():
     conn = get_conn()
     if request.method == "POST" and request.is_json:
@@ -301,6 +347,7 @@ def presupuesto():
 
 # === PEDIDOS ===
 @app.route('/estadisticas_pedidos', methods=['GET', 'POST'])
+@login_required
 def estadisticas_pedidos():
     conn = get_conn()
     cur = conn.cursor()
@@ -364,6 +411,7 @@ def estadisticas_pedidos():
 
 
 @app.route('/cambiar_estado_pedido', methods=['GET'])
+@login_required
 def cambiar_estado_pedido_form():
     cliente_buscar = request.args.get('cliente_buscar', '').strip()
     conn = get_conn()
@@ -393,6 +441,7 @@ def cambiar_estado_pedido_form():
 
 
 @app.route('/cambiar_estado_pedido', methods=['POST'])
+@login_required
 def cambiar_estado_pedido():
     conn = get_conn()
     cur = conn.cursor()
@@ -414,6 +463,7 @@ def cambiar_estado_pedido():
     return redirect(url_for('cambiar_estado_pedido_form'))
 
 @app.route('/finalizar_pedido/<int:cliente_id>/<fecha>/<estado>')
+@login_required
 def finalizar_pedido(cliente_id, fecha, estado):
     with get_conn() as conn:
         conn.execute('''
@@ -425,6 +475,7 @@ def finalizar_pedido(cliente_id, fecha, estado):
     return redirect(url_for('pedidos'))
 
 @app.route('/pedidos')
+@login_required
 def pedidos():
     cliente = request.args.get('cliente', '').strip()
     fecha = request.args.get('fecha', '').strip()
@@ -493,7 +544,9 @@ def pedidos():
     return render_template('pedidos.html',
                            pedidos_agrupados=pedidos_agrupados,
                            clientes=clientes)
+
 @app.route('/imprimir_pedido/<int:cliente_id>/<fecha>/<estado>')
+@login_required
 def imprimir_pedido(cliente_id, fecha, estado):
 
     conn = get_conn()
@@ -523,8 +576,8 @@ def imprimir_pedido(cliente_id, fecha, estado):
                            detalles=detalles,
                            total_general=total)
 
-
 @app.route('/lista_precios', methods=['GET', 'POST'])
+@login_required
 def lista_precios():
     conn = get_conn()
     cur = conn.cursor()
@@ -577,9 +630,8 @@ def lista_precios():
 
     return render_template('lista_precios.html', lista=lista_dict)
 
-
-
 @app.route('/editar_pedido/<int:cliente_id>/<fecha>/<estado>', methods=['GET', 'POST'])
+@login_required
 def editar_pedido(cliente_id, fecha, estado):
     with get_conn() as conn:
         if request.method == 'POST':
@@ -652,8 +704,8 @@ def editar_pedido(cliente_id, fecha, estado):
                            recetas=recetas,
                            total_global=total_global)
 
-
 @app.route('/eliminar_pedido/<int:id>')
+@login_required
 def eliminar_pedido(id):
     with get_conn() as conn:
         conn.execute('DELETE FROM pedidos WHERE id = ?', (id,))
@@ -661,6 +713,7 @@ def eliminar_pedido(id):
     return redirect(url_for('pedidos'))
 
 @app.route('/marcar_completo/<int:id>')
+@login_required
 def marcar_completo(id):
     with get_conn() as conn:
         pedido = conn.execute('SELECT cliente_id, fecha FROM pedidos WHERE id = ?', (id,)).fetchone()
@@ -671,6 +724,7 @@ def marcar_completo(id):
     return redirect(url_for('pedidos'))
 
 @app.route('/marcar_pendiente/<int:id>')
+@login_required
 def marcar_pendiente(id):
     with get_conn() as conn:
         pedido = conn.execute('SELECT cliente_id, fecha FROM pedidos WHERE id = ?', (id,)).fetchone()
@@ -682,6 +736,7 @@ def marcar_pendiente(id):
 
 # === COMPRAS ===
 @app.route('/ingredientes_pedidos', methods=['POST'])
+@login_required
 def ingredientes_pedidos():
     data = request.get_json()
     pedidos = data.get('pedidos', [])  # lista de dicts {cliente_id, fecha}
@@ -728,6 +783,7 @@ def ingredientes_pedidos():
     return jsonify({'status': 'ok', 'ingredientes': ingredientes})
 
 @app.route('/compras')
+@login_required
 def compras():
     with get_conn() as conn:
         filas = conn.execute('''
@@ -757,6 +813,7 @@ def compras():
 
 # Mostrar formulario de edición completa
 @app.route('/modificar_receta/<int:id>', methods=['GET'])
+@login_required
 def modificar_receta(id):
     with get_conn() as conn:
         receta = conn.execute('SELECT * FROM recetas WHERE id = ?', (id,)).fetchone()
@@ -769,6 +826,7 @@ def modificar_receta(id):
     return render_template('editar_receta.html', receta=receta, ingredientes=ingredientes_receta)
 
 @app.route('/editar_ingrediente_receta/<int:ri_id>', methods=['POST'])
+@login_required
 def editar_ingrediente_receta(ri_id):
     cantidad = float(request.form['cantidad'])
     unidad = request.form['unidad']
@@ -784,6 +842,7 @@ def editar_ingrediente_receta(ri_id):
 
 # Actualizar nombre y comentario
 @app.route('/actualizar_receta/<int:id>', methods=['POST'])
+@login_required
 def actualizar_receta(id):
     nombre = request.form['nombre']
     comentario = request.form['comentario']
@@ -794,6 +853,7 @@ def actualizar_receta(id):
 
 # Agregar ingrediente a receta
 @app.route('/agregar_ingrediente_receta/<int:receta_id>', methods=['POST'])
+@login_required
 def agregar_ingrediente_receta(receta_id):
     ingrediente_id = int(request.form['ingrediente_id'])
     cantidad = float(request.form['cantidad'])
@@ -817,6 +877,7 @@ def agregar_ingrediente_receta(receta_id):
 
 # Eliminar ingrediente de receta
 @app.route('/eliminar_ingrediente_receta/<int:ri_id>/<int:receta_id>')
+@login_required
 def eliminar_ingrediente_receta(ri_id, receta_id):
     with get_conn() as conn:
         conn.execute('DELETE FROM receta_ingredientes WHERE id = ?', (ri_id,))
