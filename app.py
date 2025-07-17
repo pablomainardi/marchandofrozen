@@ -9,31 +9,31 @@ from collections import defaultdict
 
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'esta_es_una_clave_secreta_para_desarrollo')
-
-#app.secret_key = os.environ.get('SECRET_KEY')  # ideal no usar valor por defecto en producción
-ACCESS_CODE = os.environ.get('ACCESS_CODE', '1111')  # o el código que quieras por defecto
+#app.secret_key = os.environ.get('SECRET_KEY', 'esta_es_una_clave_secreta_para_desarrollo')
+#ACCESS_CODE = os.environ.get('ACCESS_CODE', '1111')  # o el código que quieras por defecto
+app.secret_key = os.environ.get('SECRET_KEY')  # ideal no usar valor por defecto en producción
+ACCESS_CODE = os.environ.get('ACCESS_CODE')  # o el código que quieras por defecto
 
 DB_NAME = 'marchando_base.db'
 
-LOGIN_REQUIRED = False  # Cambiar a True para activar validación
+#LOGIN_REQUIRED = False  # Cambiar a True para activar validación
+
+#def login_required(f):
+#    @wraps(f)
+#   def decorated_function(*args, **kwargs):
+#        if LOGIN_REQUIRED and not session.get('logged_in'):
+#            return redirect(url_for('login', next=request.path))
+#        return f(*args, **kwargs)
+#    return decorated_function
+
 
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if LOGIN_REQUIRED and not session.get('logged_in'):
+        if not session.get('logged_in'):
             return redirect(url_for('login', next=request.path))
         return f(*args, **kwargs)
     return decorated_function
-
-
-#def login_required(f):
-#    @wraps(f)
-#    def decorated_function(*args, **kwargs):
-#        if not session.get('logged_in'):
-#            return redirect(url_for('login', next=request.path))
-#        return f(*args, **kwargs)
-#    return decorated_function
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
