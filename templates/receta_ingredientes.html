@@ -1,9 +1,8 @@
 {% extends 'base.html' %}
 {% block content %}
-
-<a href="{{ url_for('index') }}">Volver al Menú</a>
-<a href="javascript:history.back()">Volver</a>
-
+<br>
+<a href="javascript:history.back()" class="btn btn-md btn-info">Volver</a>
+<br>
 <h2>📖 Ingredientes de: {{ receta.nombre }}</h2>
 
 <table class="table">

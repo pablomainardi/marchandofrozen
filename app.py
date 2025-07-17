@@ -9,18 +9,31 @@ from collections import defaultdict
 
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY')  # ideal no usar valor por defecto en producción
-ACCESS_CODE = os.environ.get('ACCESS_CODE')  # o el código que quieras por defecto
+app.secret_key = os.environ.get('SECRET_KEY', 'esta_es_una_clave_secreta_para_desarrollo')
+
+#app.secret_key = os.environ.get('SECRET_KEY')  # ideal no usar valor por defecto en producción
+ACCESS_CODE = os.environ.get('ACCESS_CODE', '1111')  # o el código que quieras por defecto
 
 DB_NAME = 'marchando_base.db'
+
+LOGIN_REQUIRED = False  # Cambiar a True para activar validación
 
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get('logged_in'):
+        if LOGIN_REQUIRED and not session.get('logged_in'):
             return redirect(url_for('login', next=request.path))
         return f(*args, **kwargs)
     return decorated_function
+
+
+#def login_required(f):
+#    @wraps(f)
+#    def decorated_function(*args, **kwargs):
+#        if not session.get('logged_in'):
+#            return redirect(url_for('login', next=request.path))
+#        return f(*args, **kwargs)
+#    return decorated_function
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -425,11 +438,12 @@ def cambiar_estado_pedido_form():
         FROM pedidos p
         JOIN clientes c ON p.cliente_id = c.id
         JOIN recetas r ON p.receta_id = r.id
+        WHERE 1=1
     '''
 
     params = []
     if cliente_buscar:
-        query += " WHERE c.nombre LIKE ?"
+        query += " AND c.nombre LIKE ?"
         params.append(f'%{cliente_buscar}%')
 
     query += " ORDER BY p.fecha DESC"
@@ -438,30 +452,68 @@ def cambiar_estado_pedido_form():
     pedidos = c.fetchall()
     conn.close()
 
-    return render_template('cambiar_estado_pedido.html', pedidos=pedidos, cliente_buscar=cliente_buscar)
+    # Agrupar pedidos por cliente y fecha
+    pedidos_agrupados = {}
+    for p in pedidos:
+        clave = (p['cliente_id'], p['fecha'])
+        if clave not in pedidos_agrupados:
+            pedidos_agrupados[clave] = {
+                'cliente_id': p['cliente_id'],
+                'cliente': p['cliente'],
+                'fecha': p['fecha'],
+                'pedidos': [],
+            }
+        pedidos_agrupados[clave]['pedidos'].append(p)
 
+    pedidos_agrupados = list(pedidos_agrupados.values())
+
+    return render_template('cambiar_estado_pedido.html', pedidos_agrupados=pedidos_agrupados, cliente_buscar=cliente_buscar)
 
 @app.route('/cambiar_estado_pedido', methods=['POST'])
 @login_required
 def cambiar_estado_pedido():
+    accion = request.form.get('accion')
     conn = get_conn()
     cur = conn.cursor()
 
-    # Traemos todos los pedidos para saber qué ids actualizar
-    cur.execute('SELECT id FROM pedidos')
-    pedidos = cur.fetchall()
+    # Obtener todos los grupos cliente_id + fecha (para iterar)
+    cur.execute('SELECT DISTINCT cliente_id, fecha FROM pedidos')
+    grupos = cur.fetchall()
 
-    for pedido in pedidos:
-        pedido_id = pedido['id']
-        nuevo_estado = request.form.get(f'estado_{pedido_id}')
-        if nuevo_estado in ['pendiente', 'completo']:  # Ajustado a tu BD
-            cur.execute('UPDATE pedidos SET estado = ? WHERE id = ?', (nuevo_estado, pedido_id))
+    if accion == 'guardar':
+        for grupo in grupos:
+            cliente_id = grupo['cliente_id']
+            fecha = grupo['fecha']
+            campo_estado = f'estado_{cliente_id}_{fecha}'
+            nuevo_estado = request.form.get(campo_estado)
+            if nuevo_estado in ['pendiente', 'completo']:
+                cur.execute(
+                    'UPDATE pedidos SET estado = ? WHERE cliente_id = ? AND fecha = ?',
+                    (nuevo_estado, cliente_id, fecha)
+                )
+        conn.commit()
+        flash('Estados de pedidos actualizados correctamente.')
 
-    conn.commit()
+    elif accion == 'eliminar':
+        eliminados = 0
+        for grupo in grupos:
+            cliente_id = grupo['cliente_id']
+            fecha = grupo['fecha']
+            campo_eliminar = f'eliminar_{cliente_id}_{fecha}'
+            if request.form.get(campo_eliminar) == 'on':
+                cur.execute(
+                    'DELETE FROM pedidos WHERE cliente_id = ? AND fecha = ?',
+                    (cliente_id, fecha)
+                )
+                eliminados += 1
+        conn.commit()
+        if eliminados:
+            flash(f'Se eliminaron {eliminados} grupo(s) de pedidos.')
+        else:
+            flash('No se seleccionaron grupos para eliminar.')
+
     conn.close()
-    flash('Estados de pedidos actualizados correctamente.')
-
-    return redirect(url_for('cambiar_estado_pedido_form'))
+    return redirect(url_for('pedidos'))
 
 @app.route('/finalizar_pedido/<int:cliente_id>/<fecha>/<estado>')
 @login_required

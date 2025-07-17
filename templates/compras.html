@@ -3,14 +3,26 @@
 <div class="container mt-4">
     <h2 class="mb-4">🛒 Lista de Compras desde Pedidos Pendientes</h2>
 
-    <!-- Listado de Pedidos Pendientes -->
-    <div class="mb-3">
-        <button class="btn btn-sm btn-outline-primary" id="marcar_todos">Marcar Todos</button>
-        <button class="btn btn-sm btn-outline-secondary" id="desmarcar_todos">Desmarcar Todos</button>
-        <button class="btn btn-sm btn-success" id="btn_buscar_ingredientes">Buscar Ingredientes</button>
-        <button class="btn btn-sm btn-info" id="btn_lista_general" disabled>Lista General</button>
-        <button class="btn btn-sm btn-warning" id="btn_separar_tipo" disabled>Separar por Tipo</button>
-        <button class="btn btn-sm btn-outline-primary" onclick="window.print()">🖨️ Imprimir</button>
+    <!-- Filtros -->
+    <div class="row mb-3">
+        <div class="col-md-6 mb-2">
+            <input type="text" id="filtro_cliente" class="form-control" placeholder="Filtrar por Cliente (Todos)">
+        </div>
+        <div class="col-md-6 mb-2">
+            <input type="text" id="filtro_receta" class="form-control" placeholder="Filtrar por Receta (Todos)">
+        </div>
+    </div>
+
+    <!-- Botones -->
+    <div class="mb-3 d-flex justify-content-between align-items-center">
+        <div>
+            <button class="btn btn-sm btn-outline-primary" id="marcar_todos">Marcar Todos</button>
+            <button class="btn btn-sm btn-outline-secondary" id="desmarcar_todos">Desmarcar Todos</button>
+            <button class="btn btn-sm btn-warning" id="btn_separar_tipo" disabled>Separar por Tipo</button>
+        </div>
+        <div>
+            <button class="btn btn-sm btn-outline-primary" onclick="window.print()">🖨️ Imprimir</button>
+        </div>
     </div>
 
     <table class="table table-bordered table-hover table-sm" id="tabla_pedidos">
@@ -25,15 +37,15 @@
         </thead>
         <tbody>
             {% for pedido in pedidos_agrupados %}
-            <tr>
+            <tr class="cursor-pointer">
                 <td>
-                    <input type="checkbox" class="pedido_checkbox" 
+                    <input type="checkbox" class="pedido_checkbox form-check-input form-check-input-lg" 
                            data-cliente="{{ pedido.cliente_id }}" 
                            data-fecha="{{ pedido.fecha }}">
                 </td>
-                <td>{{ pedido.cliente }}</td>
+                <td class="td-cliente">{{ pedido.cliente }}</td>
                 <td>{{ pedido.fecha }}</td>
-                <td>
+                <td class="td-receta">
                     <ul>
                         {% for linea in pedido.pedidos %}
                         <li>{{ linea.receta }} ({{ linea.cantidad }})</li>
@@ -48,7 +60,7 @@
         </tbody>
     </table>
 
-    <!-- Aquí va el listado de ingredientes dinámico -->
+    <!-- Ingredientes ocultos inicialmente -->
     <div id="ingredientes_container" style="display:none; margin-top:2rem;">
         <h3>Ingredientes Totales</h3>
         <table class="table table-bordered table-sm" id="tabla_ingredientes">
@@ -62,9 +74,7 @@
                     <th>Costo Total</th>
                 </tr>
             </thead>
-            <tbody id="ingredientes_body">
-                <!-- Se llena dinámicamente -->
-            </tbody>
+            <tbody id="ingredientes_body"></tbody>
             <tfoot class="table-dark text-white">
                 <tr>
                     <th colspan="5" class="text-end">TOTAL GENERAL:</th>
@@ -76,32 +86,29 @@
 </div>
 
 <script>
-    // Botones marcar/desmarcar todos
-    document.getElementById('marcar_todos').addEventListener('click', () => {
-        document.querySelectorAll('.pedido_checkbox').forEach(ch => ch.checked = true);
-    });
-    document.getElementById('desmarcar_todos').addEventListener('click', () => {
-        document.querySelectorAll('.pedido_checkbox').forEach(ch => ch.checked = false);
-    });
-
-    // Toggle botones lista general y separar tipo - inicialmente deshabilitados, se habilitan cuando ingredientes cargan
-    const btnListaGeneral = document.getElementById('btn_lista_general');
-    const btnSepararTipo = document.getElementById('btn_separar_tipo');
     const ingredientesContainer = document.getElementById('ingredientes_container');
     const ingredientesBody = document.getElementById('ingredientes_body');
     const totalGeneralEl = document.getElementById('total_general');
+    const btnSepararTipo = document.getElementById('btn_separar_tipo');
 
-    // Estado para controlar agrupamiento
     let ingredientesData = [];
     let agrupadoPorTipo = false;
 
-    // Función para renderizar tabla ingredientes
+    // Función para actualizar selección visual
+    function actualizarSeleccion(fila, checked) {
+        if (checked) {
+            fila.classList.add('table-active');
+        } else {
+            fila.classList.remove('table-active');
+        }
+    }
+
+    // Renderizar tabla de ingredientes
     function renderIngredientes(data, agruparPorTipo) {
         ingredientesBody.innerHTML = '';
         let totalGeneral = 0;
 
         if (agruparPorTipo) {
-            // Agrupar ingredientes por tipo
             let grupos = {};
             data.forEach(ing => {
                 if (!grupos[ing.tipo]) grupos[ing.tipo] = [];
@@ -109,7 +116,6 @@
             });
 
             Object.keys(grupos).sort().forEach(tipo => {
-                // Fila encabezado tipo
                 let filaTipo = document.createElement('tr');
                 filaTipo.classList.add('table-primary');
                 let tdTipo = document.createElement('td');
@@ -118,7 +124,6 @@
                 filaTipo.appendChild(tdTipo);
                 ingredientesBody.appendChild(filaTipo);
 
-                // Ingredientes de ese tipo ordenados a-z
                 let subtotalTipo = 0;
                 grupos[tipo].sort((a,b) => a.producto.localeCompare(b.producto)).forEach(ing => {
                     let total = ing.cantidad_total * ing.costo_unitario;
@@ -137,7 +142,6 @@
                     ingredientesBody.appendChild(fila);
                 });
 
-                // Fila subtotal tipo
                 let filaSub = document.createElement('tr');
                 filaSub.classList.add('table-secondary', 'fw-bold');
                 filaSub.innerHTML = `
@@ -148,7 +152,6 @@
             });
 
         } else {
-            // Lista general, ordenada por producto a-z
             data.sort((a,b) => a.producto.localeCompare(b.producto));
             data.forEach(ing => {
                 let total = ing.cantidad_total * ing.costo_unitario;
@@ -170,22 +173,8 @@
         totalGeneralEl.textContent = `$${totalGeneral.toFixed(2)}`;
     }
 
-    // Botón buscar ingredientes: hace fetch al backend con pedidos seleccionados
-    document.getElementById('btn_buscar_ingredientes').addEventListener('click', () => {
-        const checkboxes = [...document.querySelectorAll('.pedido_checkbox')];
-        const seleccionados = checkboxes.filter(ch => ch.checked);
-
-        if (seleccionados.length === 0) {
-            alert('Seleccioná al menos un pedido para buscar ingredientes.');
-            return;
-        }
-
-        // Construir lista de pedidos (cliente_id + fecha) para enviar
-        const pedidos = seleccionados.map(ch => ({
-            cliente_id: ch.dataset.cliente,
-            fecha: ch.dataset.fecha
-        }));
-
+    // Función para pedir ingredientes al backend con lista de pedidos enviada
+    function fetchIngredientes(pedidos) {
         fetch('{{ url_for("ingredientes_pedidos") }}', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -198,35 +187,109 @@
                 agrupadoPorTipo = false;
                 ingredientesContainer.style.display = 'block';
                 renderIngredientes(ingredientesData, agrupadoPorTipo);
-
-                btnListaGeneral.disabled = true;
                 btnSepararTipo.disabled = false;
             } else {
                 alert('Error al obtener ingredientes');
+                ingredientesContainer.style.display = 'none';
+                ingredientesBody.innerHTML = '';
+                btnSepararTipo.disabled = true;
             }
         })
         .catch(e => {
             alert('Error en la comunicación con el servidor');
             console.error(e);
+            ingredientesContainer.style.display = 'none';
+            ingredientesBody.innerHTML = '';
+            btnSepararTipo.disabled = true;
+        });
+    }
+
+    // Marcar/desmarcar y actualizar ingredientes al cambiar checkbox o click fila
+    document.querySelectorAll('#tabla_pedidos tbody tr').forEach(fila => {
+        const checkbox = fila.querySelector('.pedido_checkbox');
+        if (!checkbox) return;
+
+        // Click en fila
+        fila.addEventListener('click', (e) => {
+            if (e.target.type === 'checkbox') return; // no duplicar al clicar checkbox
+            checkbox.checked = !checkbox.checked;
+            actualizarSeleccion(fila, checkbox.checked);
+            actualizarIngredientesSegunSeleccion();
+        });
+
+        // Cambio en checkbox directo
+        checkbox.addEventListener('change', () => {
+            actualizarSeleccion(fila, checkbox.checked);
+            actualizarIngredientesSegunSeleccion();
         });
     });
 
+    // Función que toma los pedidos seleccionados y hace fetch ingredientes o oculta si no hay
+    function actualizarIngredientesSegunSeleccion() {
+        const seleccionados = [...document.querySelectorAll('.pedido_checkbox')].filter(ch => ch.checked);
+        if (seleccionados.length === 0) {
+            ingredientesContainer.style.display = 'none';
+            ingredientesBody.innerHTML = '';
+            btnSepararTipo.disabled = true;
+            return;
+        }
+        const pedidos = seleccionados.map(ch => ({
+            cliente_id: ch.dataset.cliente,
+            fecha: ch.dataset.fecha
+        }));
+        fetchIngredientes(pedidos);
+    }
+
+    // Botones Marcar y Desmarcar todos
+    document.getElementById('marcar_todos').addEventListener('click', () => {
+        document.querySelectorAll('.pedido_checkbox').forEach(ch => {
+            ch.checked = true;
+            actualizarSeleccion(ch.closest('tr'), true);
+        });
+        actualizarIngredientesSegunSeleccion();
+    });
+
+    document.getElementById('desmarcar_todos').addEventListener('click', () => {
+        document.querySelectorAll('.pedido_checkbox').forEach(ch => {
+            ch.checked = false;
+            actualizarSeleccion(ch.closest('tr'), false);
+        });
+        ingredientesContainer.style.display = 'none';
+        ingredientesBody.innerHTML = '';
+        btnSepararTipo.disabled = true;
+    });
+
+    // Botón Separar por Tipo
     btnSepararTipo.addEventListener('click', () => {
         if (!ingredientesData.length) return;
         agrupadoPorTipo = true;
         renderIngredientes(ingredientesData, agrupadoPorTipo);
         btnSepararTipo.disabled = true;
-        btnListaGeneral.disabled = false;
     });
 
-    btnListaGeneral.addEventListener('click', () => {
-        if (!ingredientesData.length) return;
-        agrupadoPorTipo = false;
-        renderIngredientes(ingredientesData, agrupadoPorTipo);
-        btnListaGeneral.disabled = true;
-        btnSepararTipo.disabled = false;
-    });
+    // Función para filtrar tabla
+    function filtrarTabla() {
+        const filtroCliente = document.getElementById('filtro_cliente').value.toLowerCase();
+        const filtroReceta = document.getElementById('filtro_receta').value.toLowerCase();
+
+        const filas = document.querySelectorAll('#tabla_pedidos tbody tr');
+
+        filas.forEach(fila => {
+            // Buscar texto cliente y recetas en la fila
+            const cliente = fila.querySelector('.td-cliente').textContent.toLowerCase();
+            const recetas = fila.querySelector('.td-receta').textContent.toLowerCase();
+
+            // Verificar filtros
+            const matchCliente = filtroCliente === '' || filtroCliente === 'todos' || cliente.includes(filtroCliente);
+            const matchReceta = filtroReceta === '' || filtroReceta === 'todos' || recetas.includes(filtroReceta);
+
+            fila.style.display = (matchCliente && matchReceta) ? '' : 'none';
+        });
+    }
+
+    // Escuchar inputs filtros
+    document.getElementById('filtro_cliente').addEventListener('input', filtrarTabla);
+    document.getElementById('filtro_receta').addEventListener('input', filtrarTabla);
 
 </script>
-
 {% endblock %}

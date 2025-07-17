@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
-
+<br>
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h2 class="mb-0">Pedidos</h2>
   <a href="{{ url_for('cambiar_estado_pedido') }}" class="btn btn-primary">Modificar estado de pedidos</a>
@@ -23,17 +23,6 @@
     </select>
   </div>
 </form>
-
-<!-- MENSAJES FLASH -->
-{% with messages = get_flashed_messages() %}
-  {% if messages %}
-    <div class="alert alert-info">
-      {% for message in messages %}
-        <p>{{ message }}</p>
-      {% endfor %}
-    </div>
-  {% endif %}
-{% endwith %}
 
 <!-- TABLA DE PEDIDOS -->
 <table class="table table-bordered table-hover align-middle text-center">
