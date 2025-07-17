@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Editar Pedido</h2>
+
+{% if pedido.estado == 'completo' %}
+  <div class="alert alert-warning">
+    Este pedido está marcado como <strong>completo</strong>. Para editarlo, primero debe volver a estado <strong>pendiente</strong>.
+  </div>
+{% endif %}
+
+<form id="form-editar-pedido" method="post" {% if pedido.estado == 'completo' %}onsubmit="return false;"{% endif %}>
+  <div class="mb-3">
+    <label for="cliente" class="form-label">Cliente</label>
+    <select id="cliente" name="cliente_id" class="form-select" required>
+      {% for c in clientes %}
+        <option value="{{ c.id }}" {% if c.id == pedido.cliente_id %}selected{% endif %}>{{ c.nombre }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="mb-3">
+    <label for="fecha" class="form-label">Fecha</label>
+    <input type="date" id="fecha" name="fecha" class="form-control" value="{{ pedido.fecha }}" required>
+  </div>
+
+  <div class="mb-3">
+    <label for="estado" class="form-label">Estado</label>
+    <select id="estado" name="estado" class="form-select" required {% if pedido.estado == 'completo' %}disabled{% endif %}>
+      <option value="pendiente" {% if pedido.estado == 'pendiente' %}selected{% endif %}>Pendiente</option>
+      <option value="completo" {% if pedido.estado == 'completo' %}selected{% endif %}>Completo</option>
+    </select>
+  </div>
+
+  <h4>Recetas</h4>
+  <table class="table" id="tabla-recetas">
+    <thead>
+      <tr>
+        <th>Receta</th>
+        <th>Cantidad</th>
+        <th>Precio Unitario</th>
+        <th>Total</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for linea in lineas %}
+      <tr data-receta-id="{{ linea.receta_id }}">
+        <td>{{ linea.receta_nombre }}</td>
+        <td><input type="number" class="form-control cantidad" min="1" value="{{ linea.cantidad }}"></td>
+        <td>${{ '%.2f'|format(linea.precio_unitario) }}</td>
+        <td class="total">${{ '%.2f'|format(linea.precio_total) }}</td>
+        <td><button type="button" class="btn btn-danger btn-sm btn-eliminar-fila">Eliminar</button></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="mb-3">
+    <label for="select-recetas" class="form-label">Agregar Receta</label>
+    <select id="select-recetas" class="form-select">
+      <option value="">-- Seleccione receta --</option>
+      {% for r in recetas %}
+        <option value="{{ r.id }}" data-precio-unitario="{{ (r.precio_cliente_unitario or 0) | round(2) }}">{{ r.nombre }}</option>
+      {% endfor %}
+    </select>
+    <button type="button" id="btn-agregar-receta" class="btn btn-primary mt-2">Agregar</button>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label"><strong>Total del Pedido:</strong></label>
+    <div id="total-global" style="font-size: 1.2em;">${{ '%.2f'|format(total_global if total_global is defined else 0) }}</div>
+  </div>
+
+  <button type="submit" class="btn btn-success">Guardar Cambios</button>
+  <a href="{{ url_for('pedidos') }}" class="btn btn-secondary">Cancelar</a>
+</form>
+
+<script>
+  function actualizarTotales() {
+    const filas = document.querySelectorAll('#tabla-recetas tbody tr');
+    let sumaTotal = 0;
+    filas.forEach(fila => {
+      const cantidadInput = fila.querySelector('.cantidad');
+      const cantidad = Number(cantidadInput.value) || 0;
+      const precioUnitario = Number(fila.querySelector('td:nth-child(3)').textContent.replace('$','')) || 0;
+      const totalCelda = fila.querySelector('.total');
+      const total = cantidad * precioUnitario;
+      totalCelda.textContent = '$' + total.toFixed(2);
+      sumaTotal += total;
+    });
+
+    const totalGlobalElem = document.getElementById('total-global');
+    if (totalGlobalElem) {
+      totalGlobalElem.textContent = '$' + sumaTotal.toFixed(2);
+    }
+  }
+
+  document.querySelector('#tabla-recetas').addEventListener('input', function(e){
+    if (e.target.classList.contains('cantidad')) {
+      actualizarTotales();
+    }
+  });
+
+  document.querySelector('#btn-agregar-receta').addEventListener('click', function(){
+    const select = document.getElementById('select-recetas');
+    const recetaId = select.value;
+    const recetaNombre = select.options[select.selectedIndex].text;
+    const precioUnitario = Number(select.options[select.selectedIndex].dataset.precioUnitario) || 0;
+
+    if (!recetaId) return alert('Seleccione una receta');
+
+    if(document.querySelector(`#tabla-recetas tbody tr[data-receta-id="${recetaId}"]`)){
+      return alert('Receta ya agregada');
+    }
+
+    const tbody = document.querySelector('#tabla-recetas tbody');
+    const fila = document.createElement('tr');
+    fila.setAttribute('data-receta-id', recetaId);
+    fila.innerHTML = `
+      <td>${recetaNombre}</td>
+      <td><input type="number" class="form-control cantidad" min="1" value="1"></td>
+      <td>$${precioUnitario.toFixed(2)}</td>
+      <td class="total">$${precioUnitario.toFixed(2)}</td>
+      <td><button type="button" class="btn btn-danger btn-sm btn-eliminar-fila">Eliminar</button></td>
+    `;
+
+    tbody.appendChild(fila);
+    actualizarTotales();
+  });
+
+  document.querySelector('#tabla-recetas').addEventListener('click', function(e){
+    if(e.target.classList.contains('btn-eliminar-fila')){
+      e.target.closest('tr').remove();
+      actualizarTotales();
+    }
+  });
+
+  document.querySelector('#form-editar-pedido').addEventListener('submit', function(e){
+    e.preventDefault();
+
+    const clienteId = document.getElementById('cliente').value;
+    const fecha = document.getElementById('fecha').value;
+    const estado = document.getElementById('estado').value;
+
+    const filas = document.querySelectorAll('#tabla-recetas tbody tr');
+    if(filas.length === 0){
+      return alert('Debe agregar al menos una receta');
+    }
+
+    const recetas = [];
+    filas.forEach(fila => {
+      const receta_id = fila.getAttribute('data-receta-id');
+      const cantidad = Number(fila.querySelector('.cantidad').value);
+      const precio_unitario = Number(fila.querySelector('td:nth-child(3)').textContent.replace('$',''));
+      const total = Number(fila.querySelector('.total').textContent.replace('$',''));
+
+      recetas.push({
+        receta_id,
+        cantidad,
+        precio_unitario,
+        total
+      });
+    });
+
+    fetch(location.href, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({cliente_id: clienteId, fecha, estado, recetas})
+    })
+    .then(res => res.json())
+    .then(data => {
+      if(data.status === 'ok'){
+        alert(data.msg);
+        window.location.href = "{{ url_for('pedidos') }}";
+      } else {
+        alert('Error al guardar');
+      }
+    });
+  });
+
+  actualizarTotales();
+
+  {% if pedido.estado == 'completo' %}
+    document.querySelectorAll('input, select, button').forEach(el => el.disabled = true);
+    document.querySelector('a.btn-secondary').disabled = false;
+  {% endif %}
+</script>
+
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Nueva Receta{% endblock %}
+{% block content %}
+<h2>Agregar Nueva Receta</h2>
+<form method="POST" action="{{ url_for('nueva_receta') }}">
+  <div class="mb-3">
+    <label for="nombre" class="form-label">Nombre de la receta:</label>
+    <input type="text" class="form-control" id="nombre" name="nombre" required>
+  </div>
+  <div class="mb-3">
+    <label for="comentario" class="form-label">Comentario:</label>
+    <textarea class="form-control" id="comentario" name="comentario"></textarea>
+  </div>
+  <button type="submit" class="btn btn-success">Crear receta</button>
+</form>
+{% endblock %}

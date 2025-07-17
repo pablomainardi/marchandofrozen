@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h2 class="mb-0">Pedidos</h2>
+  <a href="{{ url_for('cambiar_estado_pedido') }}" class="btn btn-primary">Modificar estado de pedidos</a>
+</div>
+
+<!-- FILTROS -->
+<form method="get" id="form-filtros" class="mb-3 d-flex justify-content-between flex-wrap gap-3 align-items-end">
+
+  <div class="d-flex gap-2" style="flex-grow: 1; min-width: 300px;">
+    <input id="searchClientes" name="cliente" type="search" class="form-control" placeholder="Buscar cliente..." value="{{ request.args.get('cliente', '') }}">
+    <input type="date" name="fecha" id="fecha" class="form-control" value="{{ request.args.get('fecha', '') }}" style="max-width: 180px;">
+  </div>
+
+  <div style="min-width: 150px;">
+    <label for="estado" class="form-label">Estado:</label>
+    <select name="estado" id="estado" class="form-select">
+      <option value="">Todos</option>
+      <option value="pendiente" {% if request.args.get('estado') == 'pendiente' %}selected{% endif %}>Pendiente</option>
+      <option value="finalizado" {% if request.args.get('estado') == 'finalizado' %}selected{% endif %}>Finalizado</option>
+    </select>
+  </div>
+</form>
+
+<!-- MENSAJES FLASH -->
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+    <div class="alert alert-info">
+      {% for message in messages %}
+        <p>{{ message }}</p>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<!-- TABLA DE PEDIDOS -->
+<table class="table table-bordered table-hover align-middle text-center">
+  <thead class="table-dark">
+    <tr>
+      <th>Cliente</th>
+      <th>Fecha</th>
+      <th>Recetas</th>
+      <th>Total</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for grupo in pedidos_agrupados %}
+      <tr>
+        <td>{{ grupo.cliente_nombre }}</td>
+        <td>{{ grupo.fecha }}</td>
+        <td>
+          <ul class="list-unstyled mb-0">
+            {% for pedido in grupo.pedidos %}
+              <li>{{ pedido.nombre_receta }} ({{ pedido.cantidad }})</li>
+            {% endfor %}
+          </ul>
+        </td>
+        <td>${{ '%.2f' % grupo.total }}</td>
+        <td class="text-center">
+          {% if grupo.estado == 'pendiente' %}
+            <a href="{{ url_for('editar_pedido', cliente_id=grupo.cliente_id, fecha=grupo.fecha, estado=grupo.estado) }}" class="btn btn-primary btn-sm">Editar</a>
+            <a href="{{ url_for('imprimir_pedido', cliente_id=grupo.cliente_id, fecha=grupo.fecha, estado=grupo.estado) }}" class="btn btn-info btn-sm">Detalle</a>
+            <a href="{{ url_for('marcar_completo', id=grupo.pedidos[0].id) }}" class="btn btn-success btn-md mt-1">Finalizar</a>
+          {% else %}
+            <span class="badge bg-secondary fs-8 mt-1">Finalizado</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+
+
+<script>
+  // Enviar el formulario automáticamente cuando cambien los filtros
+  document.getElementById('searchClientes').addEventListener('input', () => {
+    document.getElementById('form-filtros').submit();
+  });
+  document.getElementById('fecha').addEventListener('change', () => {
+    document.getElementById('form-filtros').submit();
+  });
+  document.getElementById('estado').addEventListener('change', () => {
+    document.getElementById('form-filtros').submit();
+  });
+</script>
+
+{% endblock %}

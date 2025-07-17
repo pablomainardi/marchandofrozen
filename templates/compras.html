@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">🛒 Lista de Compras desde Pedidos Pendientes</h2>
+
+    <!-- Listado de Pedidos Pendientes -->
+    <div class="mb-3">
+        <button class="btn btn-sm btn-outline-primary" id="marcar_todos">Marcar Todos</button>
+        <button class="btn btn-sm btn-outline-secondary" id="desmarcar_todos">Desmarcar Todos</button>
+        <button class="btn btn-sm btn-success" id="btn_buscar_ingredientes">Buscar Ingredientes</button>
+        <button class="btn btn-sm btn-info" id="btn_lista_general" disabled>Lista General</button>
+        <button class="btn btn-sm btn-warning" id="btn_separar_tipo" disabled>Separar por Tipo</button>
+        <button class="btn btn-sm btn-outline-primary" onclick="window.print()">🖨️ Imprimir</button>
+    </div>
+
+    <table class="table table-bordered table-hover table-sm" id="tabla_pedidos">
+        <thead class="table-light">
+            <tr>
+                <th>Seleccionar</th>
+                <th>Cliente</th>
+                <th>Fecha</th>
+                <th>Recetas (Cantidad)</th>
+                <th>Total Pedido ($)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for pedido in pedidos_agrupados %}
+            <tr>
+                <td>
+                    <input type="checkbox" class="pedido_checkbox" 
+                           data-cliente="{{ pedido.cliente_id }}" 
+                           data-fecha="{{ pedido.fecha }}">
+                </td>
+                <td>{{ pedido.cliente }}</td>
+                <td>{{ pedido.fecha }}</td>
+                <td>
+                    <ul>
+                        {% for linea in pedido.pedidos %}
+                        <li>{{ linea.receta }} ({{ linea.cantidad }})</li>
+                        {% endfor %}
+                    </ul>
+                </td>
+                <td>${{ '%.2f'|format(pedido.total) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center">No hay pedidos pendientes</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Aquí va el listado de ingredientes dinámico -->
+    <div id="ingredientes_container" style="display:none; margin-top:2rem;">
+        <h3>Ingredientes Totales</h3>
+        <table class="table table-bordered table-sm" id="tabla_ingredientes">
+            <thead class="table-light">
+                <tr>
+                    <th>Ingrediente</th>
+                    <th>Tipo</th>
+                    <th>Unidad</th>
+                    <th>Cantidad Total</th>
+                    <th>Costo Unitario</th>
+                    <th>Costo Total</th>
+                </tr>
+            </thead>
+            <tbody id="ingredientes_body">
+                <!-- Se llena dinámicamente -->
+            </tbody>
+            <tfoot class="table-dark text-white">
+                <tr>
+                    <th colspan="5" class="text-end">TOTAL GENERAL:</th>
+                    <th id="total_general">$0.00</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+<script>
+    // Botones marcar/desmarcar todos
+    document.getElementById('marcar_todos').addEventListener('click', () => {
+        document.querySelectorAll('.pedido_checkbox').forEach(ch => ch.checked = true);
+    });
+    document.getElementById('desmarcar_todos').addEventListener('click', () => {
+        document.querySelectorAll('.pedido_checkbox').forEach(ch => ch.checked = false);
+    });
+
+    // Toggle botones lista general y separar tipo - inicialmente deshabilitados, se habilitan cuando ingredientes cargan
+    const btnListaGeneral = document.getElementById('btn_lista_general');
+    const btnSepararTipo = document.getElementById('btn_separar_tipo');
+    const ingredientesContainer = document.getElementById('ingredientes_container');
+    const ingredientesBody = document.getElementById('ingredientes_body');
+    const totalGeneralEl = document.getElementById('total_general');
+
+    // Estado para controlar agrupamiento
+    let ingredientesData = [];
+    let agrupadoPorTipo = false;
+
+    // Función para renderizar tabla ingredientes
+    function renderIngredientes(data, agruparPorTipo) {
+        ingredientesBody.innerHTML = '';
+        let totalGeneral = 0;
+
+        if (agruparPorTipo) {
+            // Agrupar ingredientes por tipo
+            let grupos = {};
+            data.forEach(ing => {
+                if (!grupos[ing.tipo]) grupos[ing.tipo] = [];
+                grupos[ing.tipo].push(ing);
+            });
+
+            Object.keys(grupos).sort().forEach(tipo => {
+                // Fila encabezado tipo
+                let filaTipo = document.createElement('tr');
+                filaTipo.classList.add('table-primary');
+                let tdTipo = document.createElement('td');
+                tdTipo.colSpan = 6;
+                tdTipo.innerHTML = `<strong>${tipo || 'Sin tipo'}</strong>`;
+                filaTipo.appendChild(tdTipo);
+                ingredientesBody.appendChild(filaTipo);
+
+                // Ingredientes de ese tipo ordenados a-z
+                let subtotalTipo = 0;
+                grupos[tipo].sort((a,b) => a.producto.localeCompare(b.producto)).forEach(ing => {
+                    let total = ing.cantidad_total * ing.costo_unitario;
+                    subtotalTipo += total;
+                    totalGeneral += total;
+
+                    let fila = document.createElement('tr');
+                    fila.innerHTML = `
+                        <td>${ing.producto}</td>
+                        <td>${ing.tipo || '-'}</td>
+                        <td>${ing.unidad}</td>
+                        <td>${ing.cantidad_total.toFixed(2)}</td>
+                        <td>$${ing.costo_unitario.toFixed(2)}</td>
+                        <td>$${total.toFixed(2)}</td>
+                    `;
+                    ingredientesBody.appendChild(fila);
+                });
+
+                // Fila subtotal tipo
+                let filaSub = document.createElement('tr');
+                filaSub.classList.add('table-secondary', 'fw-bold');
+                filaSub.innerHTML = `
+                    <td colspan="5" class="text-end">Subtotal ${tipo}:</td>
+                    <td>$${subtotalTipo.toFixed(2)}</td>
+                `;
+                ingredientesBody.appendChild(filaSub);
+            });
+
+        } else {
+            // Lista general, ordenada por producto a-z
+            data.sort((a,b) => a.producto.localeCompare(b.producto));
+            data.forEach(ing => {
+                let total = ing.cantidad_total * ing.costo_unitario;
+                totalGeneral += total;
+
+                let fila = document.createElement('tr');
+                fila.innerHTML = `
+                    <td>${ing.producto}</td>
+                    <td>${ing.tipo || '-'}</td>
+                    <td>${ing.unidad}</td>
+                    <td>${ing.cantidad_total.toFixed(2)}</td>
+                    <td>$${ing.costo_unitario.toFixed(2)}</td>
+                    <td>$${total.toFixed(2)}</td>
+                `;
+                ingredientesBody.appendChild(fila);
+            });
+        }
+
+        totalGeneralEl.textContent = `$${totalGeneral.toFixed(2)}`;
+    }
+
+    // Botón buscar ingredientes: hace fetch al backend con pedidos seleccionados
+    document.getElementById('btn_buscar_ingredientes').addEventListener('click', () => {
+        const checkboxes = [...document.querySelectorAll('.pedido_checkbox')];
+        const seleccionados = checkboxes.filter(ch => ch.checked);
+
+        if (seleccionados.length === 0) {
+            alert('Seleccioná al menos un pedido para buscar ingredientes.');
+            return;
+        }
+
+        // Construir lista de pedidos (cliente_id + fecha) para enviar
+        const pedidos = seleccionados.map(ch => ({
+            cliente_id: ch.dataset.cliente,
+            fecha: ch.dataset.fecha
+        }));
+
+        fetch('{{ url_for("ingredientes_pedidos") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pedidos })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                ingredientesData = data.ingredientes;
+                agrupadoPorTipo = false;
+                ingredientesContainer.style.display = 'block';
+                renderIngredientes(ingredientesData, agrupadoPorTipo);
+
+                btnListaGeneral.disabled = true;
+                btnSepararTipo.disabled = false;
+            } else {
+                alert('Error al obtener ingredientes');
+            }
+        })
+        .catch(e => {
+            alert('Error en la comunicación con el servidor');
+            console.error(e);
+        });
+    });
+
+    btnSepararTipo.addEventListener('click', () => {
+        if (!ingredientesData.length) return;
+        agrupadoPorTipo = true;
+        renderIngredientes(ingredientesData, agrupadoPorTipo);
+        btnSepararTipo.disabled = true;
+        btnListaGeneral.disabled = false;
+    });
+
+    btnListaGeneral.addEventListener('click', () => {
+        if (!ingredientesData.length) return;
+        agrupadoPorTipo = false;
+        renderIngredientes(ingredientesData, agrupadoPorTipo);
+        btnListaGeneral.disabled = true;
+        btnSepararTipo.disabled = false;
+    });
+
+</script>
+
+{% endblock %}

@@ -1,0 +1,178 @@
+{% extends 'base.html' %}
+{% block title %}📝 Crear Presupuesto{% endblock %}
+{% block content %}
+<h2>📝 Crear Presupuesto</h2>
+<a href="{{ url_for('index') }}">Volver al Menú</a>
+<hr>
+<div id="mensaje" class="alert d-none" role="alert"></div>
+
+<form id="form-presupuesto">
+  <div class="row mb-3">
+    <div class="col-md-6">
+      <label>Cliente</label>
+      <input type="text" id="buscador_cliente" class="form-control" placeholder="Buscar cliente..." autocomplete="off">
+      <input type="hidden" name="cliente_id" id="cliente_id" required>
+      <div id="sugerencias_cliente" class="list-group"></div>
+    </div>
+    <div class="col-md-6">
+      <label>Fecha</label>
+      <input type="date" name="fecha" id="fecha" value="{{ hoy }}" class="form-control">
+    </div>
+  </div>
+
+  <hr>
+  <h4>Agregar Receta</h4>
+  <div class="row mb-3">
+    <div class="col-md-6">
+      <label>Receta</label>
+      <input type="text" id="buscador_receta" class="form-control" placeholder="Buscar receta..." autocomplete="off">
+      <input type="hidden" id="receta_id">
+      <div id="sugerencias_receta" class="list-group"></div>
+    </div>
+    <div class="col-md-3">
+      <label>Cantidad</label>
+      <input type="number" id="cantidad_receta" class="form-control" value="1" min="1">
+    </div>
+    <div class="col-md-3 d-flex align-items-end">
+      <button type="button" class="btn btn-secondary w-100" onclick="agregarReceta()">Agregar a la lista</button>
+    </div>
+  </div>
+
+  <table class="table table-bordered" id="lista_recetas">
+    <thead>
+      <tr>
+        <th>Receta</th>
+        <th>Cantidad</th>
+        <th>Precio Cliente</th>
+        <th>Total</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr>
+        <td colspan="3"><strong>Total del Pedido</strong></td>
+        <td colspan="2" id="total_pedido">$0.00</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <button type="submit" class="btn btn-success">Guardar Presupuesto</button>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const clientes = {{ clientes|tojson }};
+const recetas = {{ recetas|tojson }};
+let lista = [];
+
+const inputCliente = document.getElementById("buscador_cliente");
+const sugerenciasCliente = document.getElementById("sugerencias_cliente");
+const clienteID = document.getElementById("cliente_id");
+const inputReceta = document.getElementById("buscador_receta");
+const sugerenciasReceta = document.getElementById("sugerencias_receta");
+const recetaIDInput = document.getElementById("receta_id");
+const mensajeDiv = document.getElementById("mensaje");
+
+// Alerta
+function mostrarAlerta(m, tipo='success') {
+  mensajeDiv.textContent = m;
+  mensajeDiv.className = `alert alert-${tipo}`;
+  mensajeDiv.classList.remove('d-none');
+  setTimeout(() => mensajeDiv.classList.add('d-none'), 3000);
+}
+
+// Autocompletar cliente
+inputCliente.addEventListener("input", () => {
+  let q = inputCliente.value.toLowerCase(), html='';
+  if (q) clientes.filter(c=>c.nombre.toLowerCase().includes(q))
+    .forEach(c=> html+=`<div class="list-group-item list-group-item-action" onclick="seleccionarCliente(${c.id},'${c.nombre}')">${c.nombre}</div>`);
+  sugerenciasCliente.innerHTML = html;
+});
+function seleccionarCliente(id,nombre) {
+  clienteID.value = id;
+  inputCliente.value = nombre;
+  sugerenciasCliente.innerHTML = '';
+}
+
+// Autocompletar receta
+inputReceta.addEventListener("input", () => {
+  let q = inputReceta.value.toLowerCase(), html='';
+  if (q) recetas.filter(r=>r.nombre.toLowerCase().includes(q))
+    .forEach(r=> html+=`<div class="list-group-item list-group-item-action" onclick="seleccionarReceta(${r.id},'${r.nombre}')">${r.nombre}</div>`);
+  sugerenciasReceta.innerHTML = html;
+});
+function seleccionarReceta(id,nombre) {
+  recetaIDInput.value = id;
+  inputReceta.value = nombre;
+  sugerenciasReceta.innerHTML = '';
+}
+
+// Agregar receta a la tabla
+function agregarReceta() {
+  const rid = +recetaIDInput.value;
+  const nombre = inputReceta.value.trim();
+  const cant = +document.getElementById("cantidad_receta").value;
+  if (!rid) return mostrarAlerta("Seleccioná una receta válida", "warning");
+  if (cant<1) return mostrarAlerta("Cantidad inválida", "warning");
+
+  let r = recetas.find(x=>x.id===rid);
+  let pu = r.precio_cliente || 0;
+  let tot = pu * cant;
+  lista.push({ receta_id:rid, receta:nombre, cantidad:cant, precio_unitario:pu, total:tot });
+  recetaIDInput.value = "";
+  inputReceta.value = "";
+  document.getElementById("cantidad_receta").value = 1;
+  renderTabla();
+}
+
+// Render tabla
+function renderTabla() {
+  const tb = document.querySelector("#lista_recetas tbody");
+  tb.innerHTML = "";
+  let suma=0;
+  lista.forEach((it,i)=>{
+    suma += it.total;
+    tb.innerHTML += `
+      <tr>
+        <td>${it.receta}</td>
+        <td>${it.cantidad}</td>
+        <td>$${it.precio_unitario.toFixed(2)}</td>
+        <td>$${it.total.toFixed(2)}</td>
+        <td><button class="btn btn-sm btn-danger" onclick="eliminarReceta(${i})">Eliminar</button></td>
+      </tr>`;
+  });
+  document.getElementById("total_pedido").textContent = `$${suma.toFixed(2)}`;
+}
+
+// Eliminar ítem
+function eliminarReceta(i) {
+  lista.splice(i,1);
+  renderTabla();
+}
+
+// Enviar formulario
+document.getElementById("form-presupuesto").addEventListener("submit", e => {
+  e.preventDefault();
+  if (!clienteID.value) return mostrarAlerta("Seleccioná un cliente", "warning");
+  if (!lista.length) return mostrarAlerta("Agregá al menos una receta", "warning");
+
+  fetch("/presupuesto", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({
+      cliente_id: +clienteID.value,
+      fecha: document.getElementById("fecha").value,
+      recetas: lista
+    })
+  })
+  .then(r=>r.json()).then(j=>{
+    if (j.status==="ok") {
+      mostrarAlerta(j.msg,"success");
+      setTimeout(()=> location.href="/pedidos", 1500);
+    } else mostrarAlerta(j.msg,"danger");
+  });
+});
+</script>
+{% endblock %}

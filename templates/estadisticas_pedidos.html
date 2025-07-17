@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>📊 Estadísticas de Pedidos Finalizados</h2>
+<hr>
+
+<!-- Totales generales -->
+<div class="row mb-4">
+  <div class="col-md-6">
+    <div class="card shadow-sm p-3">
+      <h5>Total de recetas vendidas: <strong>{{ total_recetas }}</strong></h5>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card shadow-sm p-3">
+      <h5>Total vendido: <strong>${{ '%.2f'|format(total_vendido) }}</strong></h5>
+    </div>
+  </div>
+</div>
+
+<!-- Filtros -->
+<div class="btn-group mb-4" role="group">
+  <button class="btn btn-outline-primary" onclick="filtrar('todos')">Todos</button>
+  <button class="btn btn-outline-primary" onclick="filtrar('clientes')">Clientes</button>
+  <button class="btn btn-outline-primary" onclick="filtrar('recetas')">Recetas</button>
+  <button class="btn btn-outline-primary" onclick="filtrar('ingredientes')">Ingredientes</button>
+</div>
+
+<!-- Clientes -->
+<div id="tabla_clientes" class="filtro-seccion mb-5">
+  <h4>🧝 Por Cliente</h4>
+  <table class="table table-bordered table-striped">
+    <thead>
+      <tr>
+        <th>Cliente</th>
+        <th>Total Pedidos</th>
+        <th>Total Pagado</th>
+        <th>% del total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in clientes %}
+      <tr>
+        <td>{{ c.cliente }}</td>
+        <td>{{ c.total_pedidos }}</td>
+        <td>${{ '%.2f'|format(c.total_pagado) }}</td>
+        <td>{{ '%.1f'|format((c.total_pagado / total_vendido * 100) if total_vendido else 0) }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Recetas -->
+<div id="tabla_recetas" class="filtro-seccion mb-5">
+  <h4>📦 Por Receta</h4>
+  <table class="table table-bordered table-striped">
+    <thead>
+      <tr>
+        <th>Receta</th>
+        <th>Total Vendida</th>
+        <th>% del total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in recetas %}
+      <tr>
+        <td>{{ r.receta }}</td>
+        <td>{{ r.total_vendida }}</td>
+        <td>{{ '%.1f'|format((r.total_vendida / total_recetas * 100) if total_recetas else 0) }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Ingredientes -->
+<div id="tabla_ingredientes" class="filtro-seccion mb-5">
+  <h4>🫒 Por Ingrediente</h4>
+  <table class="table table-bordered table-striped">
+    <thead>
+      <tr>
+        <th>Ingrediente</th>
+        <th>Total Usado</th>
+        <th>Unidad</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for i in ingredientes %}
+      <tr>
+        <td>{{ i.ingrediente }}</td>
+        <td>{{ '%.2f'|format(i.total_usado) }}</td>
+        <td>{{ i.unidad }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- JavaScript para filtros -->
+<script>
+  function filtrar(valor) {
+    const secciones = document.querySelectorAll('.filtro-seccion');
+    secciones.forEach(sec => sec.style.display = 'none');
+
+    if (valor === 'todos') {
+      secciones.forEach(sec => sec.style.display = 'block');
+    } else {
+      document.getElementById('tabla_' + valor).style.display = 'block';
+    }
+  }
+
+  // Mostrar todo al cargar
+  document.addEventListener('DOMContentLoaded', function () {
+    filtrar('todos');
+  });
+</script>
+
+{% endblock %}

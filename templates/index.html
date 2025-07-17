@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Inicio - Marchando{% endblock %}
+{% block content %}
+<div class="mt-4 p-5 bg-light rounded text-center">
+  <!-- Imagen principal -->
+  <img src="{{ url_for('static', filename='img/logo_marchando.png') }}" alt="Logo Marchando" class="img-fluid mb-4" style="max-height: 200px;">
+
+  <h1>Bienvenido a Marchando</h1>
+  <p>Gestiona clientes, ingredientes, recetas, presupuestos y pedidos fácilmente.</p>
+</div>
+{% endblock %}

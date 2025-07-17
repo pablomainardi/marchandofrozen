@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>Pedido #{{ pedido.id }} — {{ pedido.cliente }} ({{ pedido.fecha }})</h2>
+
+<div id="pedido-copia">
+<table border="1" cellpadding="5">
+  <thead>
+    <tr><th>Producto</th><th>Precio Unitario</th><th>Cantidad</th></tr>
+  </thead>
+  <tbody>
+    {% for item in detalles %}
+    <tr>
+      <td>{{ item.receta }}</td>
+      <td>${{ "%.2f"|format(item.precio_cliente) }}</td>
+      <td>{{ item.cantidad }}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <td colspan="2"><strong>Total general</strong></td>
+      <td><strong>${{ "%.2f"|format(total_general) }}</strong></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<br>
+
+<button onclick="window.print()">🖨️ Imprimir</button>
+<button onclick="copiarTexto()">📋 Copiar</button>
+
+<script>
+function copiarTexto() {
+    const cliente = "{{ pedido.cliente }}";
+    const fecha = "{{ pedido.fecha }}";
+    const detalles = [
+        {% for item in detalles %}
+        {
+            receta: "{{ item.receta }}",
+            precio: "{{ '%.2f'|format(item.precio_cliente) }}",
+            cantidad: "{{ item.cantidad }}"
+        },
+        {% endfor %}
+    ];
+
+    let texto = `Pedido #{{ pedido.id }} - Cliente: ${cliente} - Fecha: ${fecha}\n\n`;
+    texto += "Producto         Precio Unitario   Cantidad\n";
+    detalles.forEach(d => {
+        texto += `${d.receta.padEnd(16)} $${d.precio.padEnd(16)} ${d.cantidad}\n`;
+    });
+    texto += `\nTOTAL: ${{ '%.2f'|format(total_general) }}`;
+
+    navigator.clipboard.writeText(texto)
+        .then(() => alert("Texto copiado al portapapeles"))
+        .catch(err => alert("Error al copiar texto: " + err));
+}
+</script>
+
+{% endblock %}

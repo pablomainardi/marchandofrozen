@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<a href="{{ url_for('index') }}">Volver al Menú</a>
+<a href="javascript:history.back()">Volver</a>
+
+<h2>📖 Ingredientes de: {{ receta.nombre }}</h2>
+
+<table class="table">
+  <thead>
+    <tr>
+      <th>Ingrediente</th>
+      <th>Cantidad</th>
+      <th>Unidad</th>
+      <th>Unitario</th>
+      <th>Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for ing in ingredientes %}
+    <tr>
+      <td>{{ ing.producto }}</td>
+      <td>{{ ing.cantidad }}</td>
+      <td>{{ ing.unidad }}</td>
+      <td>${{ '%.2f'|format(ing.costo_unitario) }}</td>
+      <td>${{ '%.2f'|format(ing.costo_total) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h4>Total receta: ${{ '%.2f'|format(costo_total) }}</h4>
+<h4>Precio al cliente: ${{ '%.2f'|format(precio_cliente) }}</h4>
+
+{% endblock %}
