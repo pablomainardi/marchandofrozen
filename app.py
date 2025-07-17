@@ -4,14 +4,15 @@ from functools import wraps
 from datetime import datetime, timedelta
 import pandas as pd
 import io
+import os
 from collections import defaultdict
 
 
 app = Flask(__name__)
-app.secret_key = 'marchando'
-DB_NAME = 'marchando_base.db'
+app.secret_key = os.environ.get('SECRET_KEY')  # ideal no usar valor por defecto en producción
+ACCESS_CODE = os.environ.get('ACCESS_CODE')  # o el código que quieras por defecto
 
-ACCESS_CODE = '2511'  # poné tu código seguro aquí
+DB_NAME = 'marchando_base.db'
 
 def login_required(f):
     @wraps(f)
