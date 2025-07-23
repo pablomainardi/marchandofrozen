@@ -16,11 +16,11 @@ ACCESS_CODE = os.environ.get('ACCESS_CODE')  # o el código que quieras por defe
 
 DB_NAME = 'marchando_base.db'
 
-#LOGIN_REQUIRED = False  # Cambiar a True para activar validación
+LOGIN_REQUIRED = False  # Cambiar a True para activar validación
 
 #def login_required(f):
 #    @wraps(f)
-#   def decorated_function(*args, **kwargs):
+#    def decorated_function(*args, **kwargs):
 #        if LOGIN_REQUIRED and not session.get('logged_in'):
 #            return redirect(url_for('login', next=request.path))
 #        return f(*args, **kwargs)
@@ -106,7 +106,78 @@ def eliminar_cliente(id):
         conn.commit()
     return redirect(url_for('clientes'))
 
-# === INGREDIENTES ===
+# --- RUTA: Buscar producto por código ---
+@app.route('/buscar_producto_por_codigo')
+@login_required
+def buscar_producto_por_codigo():
+    codigo = request.args.get('codigo', '').strip()
+    if not codigo:
+        return jsonify({"existe": False})
+    with get_conn() as conn:
+        producto = conn.execute("""
+            SELECT id, producto, tipo, comentario, cantidad, unidad, costo_total
+            FROM ingredientes WHERE codigo_barra = ?
+        """, (codigo,)).fetchone()
+    if producto:
+        return jsonify({"existe": True, "producto": dict(producto)})
+    else:
+        return jsonify({"existe": False})
+
+# --- Guardar producto desde modal escáner: inserta o actualiza ---
+@app.route('/guardar_producto', methods=['POST'])
+@login_required
+def guardar_producto():
+    data = request.form
+    codigo_barra = data.get('codigo_barra', '').strip()
+    producto = data.get('producto', '').strip()
+    unidad = data.get('unidad', '').strip()
+
+    try:
+        cantidad = float(data.get('cantidad', '0'))
+        costo_total = round(float(data.get('costo_total', '0')), 2)
+    except ValueError:
+        flash("Cantidad o costo total inválidos.", "danger")
+        return redirect(url_for('modificar_ingredientes'))
+
+
+    if not codigo_barra or not producto or cantidad <= 0 or costo_total <= 0:
+        flash("Faltan campos obligatorios o valores inválidos.", "danger")
+        return redirect(url_for('modificar_ingredientes'))
+
+
+    costo_unitario = round(costo_total / cantidad, 4) if cantidad else 0
+    fecha_actual = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    with get_conn() as conn:
+        existente = conn.execute('SELECT * FROM ingredientes WHERE codigo_barra = ?', (codigo_barra,)).fetchone()
+
+        if existente:
+            # Actualizamos SOLO los campos manejados por modal escáner
+            conn.execute('''
+                UPDATE ingredientes SET
+                    producto = ?,
+                    cantidad = ?,
+                    unidad = ?,
+                    costo_total = ?,
+                    costo_unitario = ?,
+                    ultima_actualizacion = ?
+                WHERE codigo_barra = ?
+            ''', (producto, cantidad, unidad, costo_total, costo_unitario, fecha_actual, codigo_barra))
+            mensaje = "Producto actualizado correctamente."
+        else:
+            # Insertamos nuevo con tipo/comentario vacíos
+            conn.execute('''
+                INSERT INTO ingredientes (producto, tipo, comentario, cantidad, unidad, costo_total, costo_unitario, ultima_actualizacion, codigo_barra)
+                VALUES (?, '', '', ?, ?, ?, ?, ?, ?)
+            ''', (producto, cantidad, unidad, costo_total, costo_unitario, fecha_actual, codigo_barra))
+            mensaje = "Producto agregado correctamente."
+        conn.commit()
+
+    flash(mensaje, "success")
+    return redirect(url_for('modificar_ingredientes'))
+
+
+
 @app.route('/ingredientes/editar/<int:id>', methods=['POST'])
 @login_required
 def editar_ingrediente(id):
