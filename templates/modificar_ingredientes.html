@@ -65,6 +65,7 @@
     {% endfor %}
   </tbody>
 </table>
+
 <!-- Modal Editar -->
 <div class="modal fade" id="editIngredienteModal" tabindex="-1" aria-labelledby="editIngredienteLabel" aria-hidden="true">
   <div class="modal-dialog">
@@ -116,39 +117,169 @@
 </div>
 
 {% include 'modal_escaner.html' %}
-
 {% endblock %}
 
 {% block extra_js %}
+<!-- Librería QuaggaJS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+
 <script>
-function filterTable() {
-  const term = document.getElementById('searchInput').value.toLowerCase();
-  const rows = document.querySelectorAll('#ingredientesTable tbody tr');
-  rows.forEach(row => {
-    const producto = row.cells[0].textContent.toLowerCase();
-    row.style.display = producto.includes(term) ? '' : 'none';
+document.addEventListener("DOMContentLoaded", () => {
+
+  // --- Filtro de tabla ---
+  window.filterTable = function() {
+    const term = document.getElementById('searchInput').value.toLowerCase();
+    const rows = document.querySelectorAll('#ingredientesTable tbody tr');
+    rows.forEach(row => {
+      const producto = row.cells[0].textContent.toLowerCase();
+      row.style.display = producto.includes(term) ? '' : 'none';
+    });
+  };
+
+  // --- Editar ingrediente desde botón ---
+  window.editarIngredienteDesdeBoton = function(btn) {
+    const id = btn.dataset.id;
+    const producto = btn.dataset.producto;
+    const tipo = btn.dataset.tipo;
+    const comentario = btn.dataset.comentario;
+    const cantidad = btn.dataset.cantidad;
+    const unidad = btn.dataset.unidad;
+    const costo_total = btn.dataset.costo_total;
+
+    const modal = new bootstrap.Modal(document.getElementById('editIngredienteModal'));
+    document.getElementById('editIngredienteId').value = id;
+    document.getElementById('editProducto').value = producto;
+    document.getElementById('editTipo').value = tipo;
+    document.getElementById('editComentario').value = comentario;
+    document.getElementById('editCantidad').value = cantidad;
+    document.getElementById('editUnidad').value = unidad;
+    document.getElementById('editCostoTotal').value = costo_total;
+    document.getElementById('editIngredienteForm').action = `/ingredientes/editar/${id}`;
+    modal.show();
+  };
+
+  // --- Escáner con QuaggaJS ---
+  const scanMessage = document.getElementById('scan-message');
+  const videoContainer = document.getElementById('video-container');
+
+  // Función para obtener deviceId de cámara trasera o primera cámara disponible
+  async function obtenerCamaraPorDefecto() {
+    try {
+      // Pedir permiso para acceder a cámara
+      await navigator.mediaDevices.getUserMedia({ video: true });
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === "videoinput");
+      // Buscar cámara trasera por label (back, rear, environment)
+      const trasera = videoDevices.find(d => /back|rear|environment/i.test(d.label));
+      if (trasera) return trasera.deviceId;
+      // Si no hay cámara trasera, usar la primera disponible
+      return videoDevices.length ? videoDevices[0].deviceId : null;
+    } catch (error) {
+      console.error("Error al obtener cámaras:", error);
+      return null;
+    }
+  }
+
+  async function iniciarQuagga() {
+    scanMessage.textContent = "Iniciando cámara...";
+    const deviceId = await obtenerCamaraPorDefecto();
+
+    let constraints;
+    if (deviceId) {
+      constraints = { deviceId: deviceId };
+    } else {
+      constraints = { facingMode: "environment" };
+    }
+
+    Quagga.init({
+      inputStream: {
+        type: "LiveStream",
+        constraints: constraints,
+        target: videoContainer,
+        area: { top: "20%", right: "20%", left: "20%", bottom: "20%" }
+      },
+      decoder: {
+        readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader", "upc_reader"]
+      },
+      locate: true
+    }, function(err) {
+      if (err) {
+        console.error(err);
+        scanMessage.textContent = "Error al iniciar cámara: " + err.message;
+        return;
+      }
+      Quagga.start();
+      scanMessage.textContent = "Escaneando...";
+    });
+
+    Quagga.onProcessed((result) => {
+      if (result) {
+        console.log("Analizando frame...");
+      }
+    });
+
+    Quagga.onDetected((data) => {
+      const codigo = data.codeResult.code;
+      console.log("Código detectado:", codigo);
+      scanMessage.textContent = "¡Código detectado!";
+      onCodigoDetectado(codigo);
+    });
+  }
+
+  function detenerQuagga() {
+    Quagga.offDetected();
+    Quagga.stop();
+  }
+
+  function onCodigoDetectado(codigo) {
+    detenerQuagga();
+    document.getElementById('formEscaner').style.display = 'block';
+    document.getElementById('cancelarEscanerBtn').style.display = 'inline-block';
+    document.getElementById('confirmarEscanerBtn').style.display = 'inline-block';
+    document.getElementById('codigo_barra').value = codigo;
+
+    fetch(`/buscar_producto_por_codigo?codigo=${encodeURIComponent(codigo)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.existe) {
+          const p = data.producto;
+          document.getElementById('id_producto').value = p.id;
+          document.getElementById('producto').value = p.producto || '';
+          document.getElementById('cantidad').value = p.cantidad || '';
+          document.getElementById('unidad').value = p.unidad || 'unidad';
+          document.getElementById('costo_total').value = p.costo_total || '';
+        } else {
+          resetFormularioInputs(codigo);
+        }
+      })
+      .catch(err => alert("Error consultando producto: " + err));
+  }
+
+  function resetFormularioInputs(codigo = '') {
+    document.getElementById('id_producto').value = '';
+    document.getElementById('codigo_barra').value = codigo;
+    document.getElementById('producto').value = '';
+    document.getElementById('cantidad').value = '';
+    document.getElementById('unidad').value = 'unidad';
+    document.getElementById('costo_total').value = '';
+  }
+
+  window.guardarProducto = function() {
+    const form = document.getElementById('formEscaner');
+    form.action = '/guardar_producto';
+    form.method = 'POST';
+    form.submit();
+  };
+
+  document.getElementById('modalEscaner').addEventListener('shown.bs.modal', iniciarQuagga);
+  document.getElementById('modalEscaner').addEventListener('hidden.bs.modal', () => {
+    detenerQuagga();
+    resetFormularioInputs();
+    scanMessage.textContent = '';
   });
-}
 
-function editarIngredienteDesdeBoton(btn) {
-  const id = btn.dataset.id;
-  const producto = btn.dataset.producto;
-  const tipo = btn.dataset.tipo;
-  const comentario = btn.dataset.comentario;
-  const cantidad = btn.dataset.cantidad;
-  const unidad = btn.dataset.unidad;
-  const costo_total = btn.dataset.costo_total;
+});
 
-  const modal = new bootstrap.Modal(document.getElementById('editIngredienteModal'));
-  document.getElementById('editIngredienteId').value = id;
-  document.getElementById('editProducto').value = producto;
-  document.getElementById('editTipo').value = tipo;
-  document.getElementById('editComentario').value = comentario;
-  document.getElementById('editCantidad').value = cantidad;
-  document.getElementById('editUnidad').value = unidad;
-  document.getElementById('editCostoTotal').value = costo_total;
-  document.getElementById('editIngredienteForm').action = `/ingredientes/editar/${id}`;
-  modal.show();
-}
 </script>
+  
 {% endblock %}
