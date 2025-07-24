@@ -12,7 +12,7 @@
   <thead>
     <tr>
       <th>Nombre</th>
-      <th>Comentario</th>
+      <th>referencia</th>
       <th>Precio al Cliente</th>
       <th>Costo Marchando</th>
       <th>Acciones</th>
@@ -22,7 +22,7 @@
   {% for r in recetas %}
     <tr>
       <td>{{ r.nombre }}</td>
-      <td>{{ r.comentario or '' }}</td>
+      <td>{{ r.referencia or '' }}</td>
       <td>${{ "%.2f"|format(r.precio_cliente or 0) }}</td>
       <td>${{ "%.2f"|format(r.valor_total or 0) }}</td>
       <td>

@@ -21,7 +21,7 @@ LOGIN_REQUIRED = False  # Cambiar a True para activar validación
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-#       if not session.get('logged_in'): # PRUEBAS LOCALES
+ #       if not session.get('logged_in'): # PRUEBAS LOCALES
         if LOGIN_REQUIRED and not session.get('logged_in'):
             return redirect(url_for('login', next=request.path))
         return f(*args, **kwargs)
@@ -100,16 +100,17 @@ def eliminar_cliente(id):
 
 # --- RUTA: Buscar producto por código ---
 @app.route('/buscar_producto_por_codigo')
-@login_required
+@login_required 
 def buscar_producto_por_codigo():
     codigo = request.args.get('codigo', '').strip()
     if not codigo:
         return jsonify({"existe": False})
     with get_conn() as conn:
         producto = conn.execute("""
-            SELECT id, producto, tipo, comentario, cantidad, unidad, costo_total
-            FROM ingredientes WHERE codigo_barra = ?
-        """, (codigo,)).fetchone()
+    SELECT id, producto, tipo, cantidad, unidad, costo_total, referencia
+    FROM ingredientes WHERE codigo_barra = ?
+""", (codigo,)).fetchone()
+
     if producto:
         return jsonify({"existe": True, "producto": dict(producto)})
     else:
@@ -123,6 +124,9 @@ def guardar_producto():
     codigo_barra = data.get('codigo_barra', '').strip()
     producto = data.get('producto', '').strip()
     unidad = data.get('unidad', '').strip()
+    referencia = data.get('referencia', '').strip()
+    tipo = data.get('tipo', '').strip()
+
 
     try:
         cantidad = float(data.get('cantidad', '0'))
@@ -146,22 +150,20 @@ def guardar_producto():
         if existente:
             # Actualizamos SOLO los campos manejados por modal escáner
             conn.execute('''
-                UPDATE ingredientes SET
-                    producto = ?,
-                    cantidad = ?,
-                    unidad = ?,
-                    costo_total = ?,
-                    costo_unitario = ?,
-                    ultima_actualizacion = ?
-                WHERE codigo_barra = ?
-            ''', (producto, cantidad, unidad, costo_total, costo_unitario, fecha_actual, codigo_barra))
+    UPDATE ingredientes SET
+        producto = ?, cantidad = ?, unidad = ?, costo_total = ?,
+        costo_unitario = ?, referencia = ?, tipo = ?, ultima_actualizacion = ?
+    WHERE codigo_barra = ?
+''', (producto, cantidad, unidad, costo_total, costo_unitario, referencia, tipo, fecha_actual, codigo_barra))
+
             mensaje = "Producto actualizado correctamente."
         else:
-            # Insertamos nuevo con tipo/comentario vacíos
+            # Insertamos nuevo con tipo/referencia vacíos
             conn.execute('''
-                INSERT INTO ingredientes (producto, tipo, comentario, cantidad, unidad, costo_total, costo_unitario, ultima_actualizacion, codigo_barra)
-                VALUES (?, '', '', ?, ?, ?, ?, ?, ?)
-            ''', (producto, cantidad, unidad, costo_total, costo_unitario, fecha_actual, codigo_barra))
+    INSERT INTO ingredientes (producto, tipo, referencia, cantidad, unidad, costo_total, costo_unitario, ultima_actualizacion, codigo_barra)
+    VALUES (?, '', '', ?, ?, ?, ?, ?, ?)
+''', (producto, referencia, cantidad, unidad, costo_total, costo_unitario, fecha_actual, codigo_barra))
+
             mensaje = "Producto agregado correctamente."
         conn.commit()
 
@@ -174,26 +176,29 @@ def guardar_producto():
 @login_required
 def editar_ingrediente(id):
     data = request.form
+    codigo_barra = data.get('codigo_barra', '').strip()
     producto = data['producto']
     cantidad = float(data['cantidad'])
     unidad = data['unidad']
-    comentario = data.get('comentario', '')
+    referencia = data.get('referencia', '')
     tipo = data.get('tipo', '')
     costo_total = round(float(data['costo_total']), 2)
     costo_unitario = round(costo_total / cantidad, 4) if cantidad else 0
 
     with get_conn() as conn:
         conn.execute('''
-            UPDATE ingredientes SET
-                producto = ?,
-                cantidad = ?,
-                unidad = ?,
-                comentario = ?,
-                tipo = ?,
-                costo_total = ?,
-                costo_unitario = ?
-            WHERE id = ?
-        ''', (producto, cantidad, unidad, comentario, tipo, costo_total, costo_unitario, id))
+    UPDATE ingredientes SET
+        producto = ?,
+        cantidad = ?,
+        unidad = ?,
+        referencia = ?,
+        tipo = ?,
+        costo_total = ?,
+        costo_unitario = ?,
+        codigo_barra = ?
+    WHERE id = ?
+''', (producto, cantidad, unidad, referencia, tipo, costo_total, costo_unitario, codigo_barra, id))
+
         conn.commit()
 
     flash('Ingrediente actualizado correctamente')
@@ -215,16 +220,16 @@ def agregar_ingrediente():
     producto = data['producto']
     cantidad = float(data['cantidad'])
     unidad = data['unidad']
-    comentario = data.get('comentario', '')
+    referencia = data.get('referencia', '')
     tipo = data.get('tipo', '')
     costo_total = round(float(data['costo_total']), 2)
     costo_unitario = round(costo_total / cantidad, 4) if cantidad else 0
 
     with get_conn() as conn:
         conn.execute('''
-            INSERT INTO ingredientes (producto, cantidad, unidad, comentario, tipo, costo_total, costo_unitario)
+            INSERT INTO ingredientes (producto, cantidad, unidad, referencia, tipo, costo_total, costo_unitario)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (producto, cantidad, unidad, comentario, tipo, costo_total, costo_unitario))
+        ''', (producto, cantidad, unidad, referencia, tipo, costo_total, costo_unitario))
         conn.commit()
 
     flash('Ingrediente agregado correctamente')
@@ -235,23 +240,32 @@ def agregar_ingrediente():
 def modificar_ingredientes():
     with get_conn() as conn:
         ingredientes_raw = conn.execute('SELECT * FROM ingredientes ORDER BY producto').fetchall()
-    # Convertimos costo_unitario a float para evitar error en template
+        
+        referencias_raw = conn.execute("SELECT DISTINCT referencia FROM ingredientes WHERE referencia IS NOT NULL AND referencia != ''").fetchall()
+        codigos_raw = conn.execute("SELECT DISTINCT codigo_barra FROM ingredientes WHERE codigo_barra IS NOT NULL AND codigo_barra != ''").fetchall()
+    
     ingredientes = []
     for i in ingredientes_raw:
         fila = dict(i)
         try:
             fila['costo_unitario'] = float(fila['costo_unitario'])
         except (TypeError, ValueError):
-            fila['costo_unitario'] = 0.0  # fallback si no es convertible
+            fila['costo_unitario'] = 0.0
         ingredientes.append(fila)
-    return render_template('modificar_ingredientes.html', ingredientes=ingredientes)
 
+    referencias = [r['referencia'] for r in referencias_raw]
+    codigos_barra = [c['codigo_barra'] for c in codigos_raw]
+
+    return render_template('modificar_ingredientes.html', 
+                           ingredientes=ingredientes,
+                           referencias=referencias,
+                           codigos_barra=codigos_barra)
 
 @app.route('/exportar_ingredientes')
 @login_required
 def exportar_ingredientes():
     with get_conn() as conn:
-        df = pd.read_sql_query("SELECT producto, cantidad, unidad, costo_total, tipo, comentario FROM ingredientes", conn)
+        df = pd.read_sql_query("SELECT producto, cantidad, unidad, costo_total, tipo, referencia FROM ingredientes", conn)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Ingredientes')
@@ -288,15 +302,16 @@ def importar_ingredientes():
             costo_unitario = costo_total / cantidad if cantidad else 0
 
             conn.execute('''
-                INSERT INTO ingredientes (producto, cantidad, unidad, tipo, costo_total, costo_unitario)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(producto) DO UPDATE SET
-                    cantidad=excluded.cantidad,
-                    unidad=excluded.unidad,
-                    tipo=excluded.tipo,
-                    costo_total=excluded.costo_total,
-                    costo_unitario=excluded.costo_unitario
-            ''', (producto, cantidad, unidad, tipo, costo_total, costo_unitario))
+    INSERT INTO ingredientes (producto, cantidad, unidad, tipo, costo_total, costo_unitario)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(producto) DO UPDATE SET
+        cantidad=excluded.cantidad,
+        unidad=excluded.unidad,
+        tipo=excluded.tipo,
+        costo_total=excluded.costo_total,
+        costo_unitario=excluded.costo_unitario
+''', (producto, cantidad, unidad, tipo, costo_total, costo_unitario))
+
         conn.commit()
     return redirect(url_for('modificar_ingredientes'))
 
@@ -344,9 +359,9 @@ def ver_recetas():
 def nueva_receta():
     if request.method == 'POST':
         nombre = request.form['nombre']
-        comentario = request.form.get('comentario', '')
+        referencia = request.form.get('referencia', '')
         with get_conn() as conn:
-            conn.execute('INSERT INTO recetas (nombre, comentario) VALUES (?, ?)', (nombre, comentario))
+            conn.execute('INSERT INTO recetas (nombre, referencia) VALUES (?, ?)', (nombre, referencia))
             conn.commit()
         return redirect(url_for('ver_recetas'))
     return render_template('nueva_receta.html')
@@ -956,14 +971,14 @@ def editar_ingrediente_receta(ri_id):
         receta_id = conn.execute('SELECT receta_id FROM receta_ingredientes WHERE id = ?', (ri_id,)).fetchone()[0]
     return redirect(url_for('modificar_receta', id=receta_id))
 
-# Actualizar nombre y comentario
+# Actualizar nombre y referencia
 @app.route('/actualizar_receta/<int:id>', methods=['POST'])
 @login_required
 def actualizar_receta(id):
     nombre = request.form['nombre']
-    comentario = request.form['comentario']
+    referencia = request.form['referencia']
     with get_conn() as conn:
-        conn.execute('UPDATE recetas SET nombre = ?, comentario = ? WHERE id = ?', (nombre, comentario, id))
+        conn.execute('UPDATE recetas SET nombre = ?, referencia = ? WHERE id = ?', (nombre, referencia, id))
         conn.commit()
     return redirect(url_for('ver_recetas'))
 

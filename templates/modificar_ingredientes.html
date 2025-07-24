@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Ingredientes{% endblock %}
 {% block content %}
+<datalist id="lista_codigos">
+  {% for i in ingredientes %}
+    {% if i.codigo_barra %}
+      <option value="{{ i.codigo_barra }}">{{ i.producto }}</option>
+    {% endif %}
+  {% endfor %}
+</datalist>
 <h2>Lista de Ingredientes</h2>
 
 <div class="mb-3 d-flex justify-content-between flex-wrap gap-2">
@@ -26,9 +33,10 @@
 <table class="table table-striped table-hover" id="ingredientesTable">
   <thead>
     <tr>
+      <th>Código de Barra</th>
       <th>Producto</th>
       <th>Tipo</th>
-      <th>Comentario</th>
+      <th>Referencia</th>
       <th>Cantidad</th>
       <th>Unidad</th>
       <th>Costo Total</th>
@@ -39,9 +47,10 @@
   <tbody>
     {% for i in ingredientes %}
     <tr>
+      <td>{{ i.codigo_barra or '' }}</td>
       <td>{{ i.producto }}</td>
       <td>{{ i.tipo or '' }}</td>
-      <td>{{ i.comentario or '' }}</td>
+      <td>{{ i.referencia or '' }}</td>
       <td>{{ i.cantidad }}</td>
       <td>{{ i.unidad }}</td>
       <td>${{ "%.2f"|format(i.costo_total) }}</td>
@@ -49,9 +58,10 @@
       <td>
         <button class="btn btn-sm btn-primary"
           data-id="{{ i.id }}"
+          data-codigo_barra="{{ i.codigo_barra or '' }}"
           data-producto="{{ i.producto }}"
           data-tipo="{{ i.tipo or '' }}"
-          data-comentario="{{ i.comentario or '' }}"
+          data-referencia="{{ i.referencia or '' }}"
           data-cantidad="{{ i.cantidad }}"
           data-unidad="{{ i.unidad }}"
           data-costo_total="{{ i.costo_total }}"
@@ -65,6 +75,57 @@
     {% endfor %}
   </tbody>
 </table>
+<!-- Modal Agregar -->
+<div class="modal fade" id="addIngredienteModal" tabindex="-1" aria-labelledby="addIngredienteLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="addIngredienteForm" action="{{ url_for('agregar_ingrediente') }}" method="POST">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="addIngredienteLabel">Agregar Ingrediente</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="addCodigoBarra" class="form-label">Código de Barra</label>
+            <input name="codigo_barra" type="text" class="form-control" id="addCodigoBarra" list="listaCodigosBarra">
+          </div>
+          <div class="mb-3">
+            <label for="addProducto" class="form-label">Producto</label>
+            <input name="producto" type="text" class="form-control" id="addProducto" required>
+          </div>
+          <div class="mb-3">
+            <label for="addTipo" class="form-label">Tipo</label>
+            <input name="tipo" type="text" class="form-control" id="addTipo">
+          </div>
+          <div class="mb-3">
+            <label for="addReferencia" class="form-label">Referencia</label>
+            <input name="referencia" type="text" class="form-control" id="addReferencia" list="listaReferencias">
+          </div>
+          <div class="mb-3">
+            <label for="addCantidad" class="form-label">Cantidad</label>
+            <input name="cantidad" type="number" step="any" class="form-control" id="addCantidad" required>
+          </div>
+          <div class="mb-3">
+            <label for="addUnidad" class="form-label">Unidad</label>
+            <select name="unidad" class="form-select" id="addUnidad" required>
+              <option value="ml">ml</option>
+              <option value="g">g</option>
+              <option value="unidad">unidad</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="addCostoTotal" class="form-label">Costo Total</label>
+            <input name="costo_total" type="number" step="any" class="form-control" id="addCostoTotal" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success">Agregar</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
 
 <!-- Modal Editar -->
 <div class="modal fade" id="editIngredienteModal" tabindex="-1" aria-labelledby="editIngredienteLabel" aria-hidden="true">
@@ -78,6 +139,15 @@
         <div class="modal-body">
           <input type="hidden" name="id" id="editIngredienteId" />
           <div class="mb-3">
+  <label for="editCodigoBarra" class="form-label">Código de Barra</label>
+  <input name="codigo_barra" type="text" class="form-control" id="editCodigoBarra" list="listaCodigosBarra">
+  <datalist id="listaCodigosBarra">
+    {% for c in codigos_barra %}
+      <option value="{{ c }}">
+    {% endfor %}
+  </datalist>
+</div>
+          <div class="mb-3">
             <label for="editProducto" class="form-label">Producto</label>
             <input name="producto" type="text" class="form-control" id="editProducto" required>
           </div>
@@ -86,9 +156,14 @@
             <input name="tipo" type="text" class="form-control" id="editTipo">
           </div>
           <div class="mb-3">
-            <label for="editComentario" class="form-label">Comentario</label>
-            <input name="comentario" type="text" class="form-control" id="editComentario">
-          </div>
+  <label for="editReferencia" class="form-label">Referencia</label>
+  <input name="referencia" type="text" class="form-control" id="editReferencia" list="listaReferencias">
+  <datalist id="listaReferencias">
+    {% for ref in referencias %}
+      <option value="{{ ref }}">
+    {% endfor %}
+  </datalist>
+</div>
           <div class="mb-3">
             <label for="editCantidad" class="form-label">Cantidad</label>
             <input name="cantidad" type="number" step="any" class="form-control" id="editCantidad" required>
@@ -127,30 +202,41 @@
 document.addEventListener("DOMContentLoaded", () => {
 
   // --- Filtro de tabla ---
-  window.filterTable = function() {
-    const term = document.getElementById('searchInput').value.toLowerCase();
-    const rows = document.querySelectorAll('#ingredientesTable tbody tr');
-    rows.forEach(row => {
-      const producto = row.cells[0].textContent.toLowerCase();
-      row.style.display = producto.includes(term) ? '' : 'none';
-    });
-  };
+window.filterTable = function() {
+  const term = normalizeText(document.getElementById('searchInput').value);
+  const rows = document.querySelectorAll('#ingredientesTable tbody tr');
+  rows.forEach(row => {
+    const producto = normalizeText(row.cells[1].textContent);
+    row.style.display = producto.includes(term) ? '' : 'none';
+  });
+};
+
+// Función para normalizar texto (eliminar acentos y pasar a minúsculas)
+function normalizeText(text) {
+  return text
+    .toLowerCase()
+    .normalize("NFD") // separa caracteres base de diacríticos
+    .replace(/[\u0300-\u036f]/g, ""); // elimina diacríticos
+}
+
 
   // --- Editar ingrediente desde botón ---
   window.editarIngredienteDesdeBoton = function(btn) {
     const id = btn.dataset.id;
+    const codigo_barra = btn.dataset.codigo_barra || '';
     const producto = btn.dataset.producto;
     const tipo = btn.dataset.tipo;
-    const comentario = btn.dataset.comentario;
+    const referencia = btn.dataset.referencia || '';
     const cantidad = btn.dataset.cantidad;
     const unidad = btn.dataset.unidad;
     const costo_total = btn.dataset.costo_total;
 
     const modal = new bootstrap.Modal(document.getElementById('editIngredienteModal'));
     document.getElementById('editIngredienteId').value = id;
+    document.getElementById('editCodigoBarra').value = codigo_barra;
     document.getElementById('editProducto').value = producto;
     document.getElementById('editTipo').value = tipo;
-    document.getElementById('editComentario').value = comentario;
+    document.getElementById('editReferencia').value = referencia;
     document.getElementById('editCantidad').value = cantidad;
     document.getElementById('editUnidad').value = unidad;
     document.getElementById('editCostoTotal').value = costo_total;
@@ -245,6 +331,8 @@ document.addEventListener("DOMContentLoaded", () => {
           const p = data.producto;
           document.getElementById('id_producto').value = p.id;
           document.getElementById('producto').value = p.producto || '';
+          document.getElementById('comentario').value = p.referencia || '';
+          document.getElementById('tipo').value = p.tipo || '';
           document.getElementById('cantidad').value = p.cantidad || '';
           document.getElementById('unidad').value = p.unidad || 'unidad';
           document.getElementById('costo_total').value = p.costo_total || '';
