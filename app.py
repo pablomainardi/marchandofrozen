@@ -21,7 +21,7 @@ LOGIN_REQUIRED = False  # Cambiar a True para activar validación
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
- #       if not session.get('logged_in'): # PRUEBAS LOCALES
+#        if not session.get('logged_in'): # PRUEBAS LOCALES
         if LOGIN_REQUIRED and not session.get('logged_in'):
             return redirect(url_for('login', next=request.path))
         return f(*args, **kwargs)
@@ -64,7 +64,7 @@ def clientes():
             SELECT c.*, 
                    IFNULL(SUM(p.precio_total), 0) as consumo_total
             FROM clientes c
-            LEFT JOIN pedidos p ON c.id = p.cliente_id AND p.estado = 'completo'
+            LEFT JOIN pedidos p ON c.id = p.cliente_id AND p.estado = 'finalizado'
             GROUP BY c.id
             ORDER BY c.nombre
         ''').fetchall()
@@ -100,33 +100,36 @@ def eliminar_cliente(id):
 
 # --- RUTA: Buscar producto por código ---
 @app.route('/buscar_producto_por_codigo')
-@login_required 
+@login_required
 def buscar_producto_por_codigo():
     codigo = request.args.get('codigo', '').strip()
     if not codigo:
         return jsonify({"existe": False})
+    
     with get_conn() as conn:
+        # Buscar el código dentro de la lista separada por comas
         producto = conn.execute("""
-    SELECT id, producto, tipo, cantidad, unidad, costo_total, referencia
-    FROM ingredientes WHERE codigo_barra = ?
-""", (codigo,)).fetchone()
+            SELECT id, producto, tipo, cantidad, unidad, costo_total, referencia, codigo_barra
+            FROM ingredientes
+            WHERE ',' || codigo_barra || ',' LIKE '%,' || ? || ',%'
+        """, (codigo,)).fetchone()
 
     if producto:
         return jsonify({"existe": True, "producto": dict(producto)})
     else:
         return jsonify({"existe": False})
 
+
 # --- Guardar producto desde modal escáner: inserta o actualiza ---
 @app.route('/guardar_producto', methods=['POST'])
 @login_required
 def guardar_producto():
     data = request.form
-    codigo_barra = data.get('codigo_barra', '').strip()
+    codigo_barra = data.get('codigo_barra', '').strip()  # Puede ser un único código
     producto = data.get('producto', '').strip()
     unidad = data.get('unidad', '').strip()
     referencia = data.get('referencia', '').strip()
     tipo = data.get('tipo', '').strip()
-
 
     try:
         cantidad = float(data.get('cantidad', '0'))
@@ -135,48 +138,49 @@ def guardar_producto():
         flash("Cantidad o costo total inválidos.", "danger")
         return redirect(url_for('modificar_ingredientes'))
 
-
     if not codigo_barra or not producto or cantidad <= 0 or costo_total <= 0:
         flash("Faltan campos obligatorios o valores inválidos.", "danger")
         return redirect(url_for('modificar_ingredientes'))
-
 
     costo_unitario = round(costo_total / cantidad, 4) if cantidad else 0
     fecha_actual = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     with get_conn() as conn:
-        existente = conn.execute('SELECT * FROM ingredientes WHERE codigo_barra = ?', (codigo_barra,)).fetchone()
+        # Buscar si alguno de los códigos ya existe en la base
+        existente = conn.execute("""
+            SELECT * FROM ingredientes
+            WHERE ',' || codigo_barra || ',' LIKE '%,' || ? || ',%'
+        """, (codigo_barra,)).fetchone()
 
         if existente:
-            # Actualizamos SOLO los campos manejados por modal escáner
+            # Actualizamos el producto
             conn.execute('''
-    UPDATE ingredientes SET
-        producto = ?, cantidad = ?, unidad = ?, costo_total = ?,
-        costo_unitario = ?, referencia = ?, tipo = ?, ultima_actualizacion = ?
-    WHERE codigo_barra = ?
-''', (producto, cantidad, unidad, costo_total, costo_unitario, referencia, tipo, fecha_actual, codigo_barra))
-
+                UPDATE ingredientes SET
+                    producto = ?, cantidad = ?, unidad = ?, costo_total = ?,
+                    costo_unitario = ?, referencia = ?, tipo = ?, ultima_actualizacion = ?
+                WHERE id = ?
+            ''', (producto, cantidad, unidad, costo_total, costo_unitario, referencia, tipo, fecha_actual, existente['id']))
             mensaje = "Producto actualizado correctamente."
         else:
-            # Insertamos nuevo con tipo/referencia vacíos
+            # Insertamos nuevo
             conn.execute('''
-    INSERT INTO ingredientes (producto, tipo, referencia, cantidad, unidad, costo_total, costo_unitario, ultima_actualizacion, codigo_barra)
-    VALUES (?, '', '', ?, ?, ?, ?, ?, ?)
-''', (producto, referencia, cantidad, unidad, costo_total, costo_unitario, fecha_actual, codigo_barra))
-
+                INSERT INTO ingredientes (producto, tipo, referencia, cantidad, unidad, costo_total, costo_unitario, ultima_actualizacion, codigo_barra)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (producto, tipo, referencia, cantidad, unidad, costo_total, costo_unitario, fecha_actual, codigo_barra))
             mensaje = "Producto agregado correctamente."
+
         conn.commit()
 
     flash(mensaje, "success")
     return redirect(url_for('modificar_ingredientes'))
 
 
-
+# --- Editar ingrediente desde pantalla principal ---
 @app.route('/ingredientes/editar/<int:id>', methods=['POST'])
 @login_required
 def editar_ingrediente(id):
     data = request.form
-    codigo_barra = data.get('codigo_barra', '').strip()
+    codigo_barra = data.get('codigo_barra', '').strip()  # Aquí puede haber varios códigos separados por coma
     producto = data['producto']
     cantidad = float(data['cantidad'])
     unidad = data['unidad']
@@ -187,21 +191,14 @@ def editar_ingrediente(id):
 
     with get_conn() as conn:
         conn.execute('''
-    UPDATE ingredientes SET
-        producto = ?,
-        cantidad = ?,
-        unidad = ?,
-        referencia = ?,
-        tipo = ?,
-        costo_total = ?,
-        costo_unitario = ?,
-        codigo_barra = ?
-    WHERE id = ?
-''', (producto, cantidad, unidad, referencia, tipo, costo_total, costo_unitario, codigo_barra, id))
-
+            UPDATE ingredientes SET
+                producto = ?, cantidad = ?, unidad = ?, referencia = ?,
+                tipo = ?, costo_total = ?, costo_unitario = ?, codigo_barra = ?
+            WHERE id = ?
+        ''', (producto, cantidad, unidad, referencia, tipo, costo_total, costo_unitario, codigo_barra, id))
         conn.commit()
 
-    flash('Ingrediente actualizado correctamente')
+    flash('Ingrediente actualizado correctamente', 'success')
     return redirect(url_for('modificar_ingredientes'))
 
 @app.route('/ingredientes/eliminar/<int:id>')
@@ -222,28 +219,37 @@ def agregar_ingrediente():
     unidad = data['unidad']
     referencia = data.get('referencia', '')
     tipo = data.get('tipo', '')
+    codigo_barra = data.get('codigo_barra', '').strip()  # <- NUEVO
     costo_total = round(float(data['costo_total']), 2)
     costo_unitario = round(costo_total / cantidad, 4) if cantidad else 0
 
     with get_conn() as conn:
         conn.execute('''
-            INSERT INTO ingredientes (producto, cantidad, unidad, referencia, tipo, costo_total, costo_unitario)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (producto, cantidad, unidad, referencia, tipo, costo_total, costo_unitario))
+            INSERT INTO ingredientes (producto, cantidad, unidad, referencia, tipo, costo_total, costo_unitario, codigo_barra)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (producto, cantidad, unidad, referencia, tipo, costo_total, costo_unitario, codigo_barra))
         conn.commit()
 
     flash('Ingrediente agregado correctamente')
     return redirect(url_for('modificar_ingredientes'))
+
 
 @app.route('/modificar_ingredientes')
 @login_required
 def modificar_ingredientes():
     with get_conn() as conn:
         ingredientes_raw = conn.execute('SELECT * FROM ingredientes ORDER BY producto').fetchall()
-        
-        referencias_raw = conn.execute("SELECT DISTINCT referencia FROM ingredientes WHERE referencia IS NOT NULL AND referencia != ''").fetchall()
-        codigos_raw = conn.execute("SELECT DISTINCT codigo_barra FROM ingredientes WHERE codigo_barra IS NOT NULL AND codigo_barra != ''").fetchall()
-    
+
+        referencias_raw = conn.execute("""
+            SELECT DISTINCT referencia FROM ingredientes
+            WHERE referencia IS NOT NULL AND referencia != ''
+        """).fetchall()
+
+        codigos_raw = conn.execute("""
+            SELECT DISTINCT codigo_barra FROM ingredientes
+            WHERE codigo_barra IS NOT NULL AND codigo_barra != ''
+        """).fetchall()
+
     ingredientes = []
     for i in ingredientes_raw:
         fila = dict(i)
@@ -256,65 +262,76 @@ def modificar_ingredientes():
     referencias = [r['referencia'] for r in referencias_raw]
     codigos_barra = [c['codigo_barra'] for c in codigos_raw]
 
-    return render_template('modificar_ingredientes.html', 
+    return render_template('modificar_ingredientes.html',
                            ingredientes=ingredientes,
                            referencias=referencias,
                            codigos_barra=codigos_barra)
 
+
+# --- Exportar ingredientes con código de barra ---
 @app.route('/exportar_ingredientes')
 @login_required
 def exportar_ingredientes():
     with get_conn() as conn:
-        df = pd.read_sql_query("SELECT producto, cantidad, unidad, costo_total, tipo, referencia FROM ingredientes", conn)
+        df = pd.read_sql_query("""
+            SELECT producto, cantidad, unidad, costo_total, tipo, referencia, codigo_barra
+            FROM ingredientes
+        """, conn)
+
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Ingredientes')
     output.seek(0)
+
     return send_file(output, as_attachment=True, download_name='ingredientes.xlsx',
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
+
+# --- Importar ingredientes con código de barra ---# --- Importar ingredientes con código de barra ---
 @app.route('/importar_ingredientes', methods=['POST'])
 @login_required
 def importar_ingredientes():
     archivo = request.files.get('archivo_excel')
     if not archivo:
-        return "No se seleccionó archivo", 400
-    
-    print(f"Archivo recibido: {archivo.filename}")
-    
+        flash('No se seleccionó archivo para importar.', 'danger')
+        return redirect(url_for('modificar_ingredientes'))
+
     try:
         df = pd.read_excel(archivo)
     except Exception as e:
-        return f"Error al leer Excel: {e}", 400
+        flash(f"Error al leer el archivo Excel: {e}", 'danger')
+        return redirect(url_for('modificar_ingredientes'))
 
-    # Limpiamos nombres columnas para evitar problemas de espacios o mayúsculas
     df.columns = [col.strip().lower() for col in df.columns]
-
-    print(f"Columnas en Excel: {df.columns.tolist()}")
 
     with get_conn() as conn:
         for _, row in df.iterrows():
             producto = row.get('producto', '')
             cantidad = float(row.get('cantidad', 0))
             unidad = row.get('unidad', '')
-            tipo = row.get('tipo', '')  # Aquí debería venir bien si la columna existe
+            tipo = row.get('tipo', '')
+            referencia = row.get('referencia', '')
+            codigo_barra = str(row.get('codigo_barra', '')).strip()
             costo_total = float(row.get('costo_total', 0))
             costo_unitario = costo_total / cantidad if cantidad else 0
 
             conn.execute('''
-    INSERT INTO ingredientes (producto, cantidad, unidad, tipo, costo_total, costo_unitario)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(producto) DO UPDATE SET
-        cantidad=excluded.cantidad,
-        unidad=excluded.unidad,
-        tipo=excluded.tipo,
-        costo_total=excluded.costo_total,
-        costo_unitario=excluded.costo_unitario
-''', (producto, cantidad, unidad, tipo, costo_total, costo_unitario))
+                INSERT INTO ingredientes (producto, cantidad, unidad, tipo, referencia, codigo_barra, costo_total, costo_unitario)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(producto) DO UPDATE SET
+                    cantidad=excluded.cantidad,
+                    unidad=excluded.unidad,
+                    tipo=excluded.tipo,
+                    referencia=excluded.referencia,
+                    codigo_barra=excluded.codigo_barra,
+                    costo_total=excluded.costo_total,
+                    costo_unitario=excluded.costo_unitario
+            ''', (producto, cantidad, unidad, tipo, referencia, codigo_barra, costo_total, costo_unitario))
 
         conn.commit()
-    return redirect(url_for('modificar_ingredientes'))
 
+    flash('Ingredientes importados correctamente.', 'success')
+    return redirect(url_for('modificar_ingredientes'))
 
 @app.route('/buscar_ingrediente')
 @login_required
@@ -447,7 +464,7 @@ def estadisticas_pedidos():
     filtro = request.form.get('filtro', 'todos')
 
     # Filtro base: solo pedidos finalizados
-    base_query = "SELECT * FROM pedidos WHERE estado = 'completo'"
+    base_query = "SELECT * FROM pedidos WHERE estado = 'finalizado'"
     pedidos = cur.execute(base_query).fetchall()
 
     # Datos generales
@@ -461,7 +478,7 @@ def estadisticas_pedidos():
                SUM(p.precio_total) AS total_pagado
         FROM pedidos p
         JOIN clientes c ON p.cliente_id = c.id
-        WHERE p.estado = 'completo'
+        WHERE p.estado = 'finalizado'
         GROUP BY c.id
         ORDER BY total_pagado DESC
     """).fetchall()
@@ -472,7 +489,7 @@ def estadisticas_pedidos():
                SUM(p.cantidad) AS total_vendida
         FROM pedidos p
         JOIN recetas r ON p.receta_id = r.id
-        WHERE p.estado = 'completo'
+        WHERE p.estado = 'finalizado'
         GROUP BY r.id
         ORDER BY total_vendida DESC
     """).fetchall()
@@ -485,7 +502,7 @@ def estadisticas_pedidos():
         FROM pedidos p
         JOIN receta_ingredientes ri ON p.receta_id = ri.receta_id
         JOIN ingredientes i ON ri.ingrediente_id = i.id
-        WHERE p.estado = 'completo'
+        WHERE p.estado = 'finalizado'
         GROUP BY i.id
         ORDER BY total_usado DESC
     """).fetchall()
@@ -564,7 +581,7 @@ def cambiar_estado_pedido():
             fecha = grupo['fecha']
             campo_estado = f'estado_{cliente_id}_{fecha}'
             nuevo_estado = request.form.get(campo_estado)
-            if nuevo_estado in ['pendiente', 'completo']:
+            if nuevo_estado in ['pendiente', 'finalizado']:
                 cur.execute(
                     'UPDATE pedidos SET estado = ? WHERE cliente_id = ? AND fecha = ?',
                     (nuevo_estado, cliente_id, fecha)
@@ -598,18 +615,18 @@ def cambiar_estado_pedido():
 def finalizar_pedido(cliente_id, fecha, estado):
     with get_conn() as conn:
         conn.execute('''
-            UPDATE pedidos SET estado = 'completo'
+            UPDATE pedidos SET estado = 'finalizado'
             WHERE cliente_id = ? AND fecha = ? AND estado = ?
         ''', (cliente_id, fecha, estado))
         conn.commit()
-    flash('Pedido marcado como completo.')
+    flash('Pedido marcado como finalizado.')
     return redirect(url_for('pedidos'))
 
 @app.route('/pedidos')
 @login_required
 def pedidos():
     cliente = request.args.get('cliente', '').strip()
-    fecha = request.args.get('fecha', '').strip()
+    fecha = request.args.get('fecha', '').strip()  # Ahora será MM/YYYY
     estado = request.args.get('estado', '').strip()
 
     conn = get_conn()
@@ -628,13 +645,17 @@ def pedidos():
     params = []
 
     if cliente:
-        # Filtrar por nombre parcial (case insensitive)
         query += ' AND LOWER(c.nombre) LIKE ?'
         params.append(f'%{cliente.lower()}%')
 
+    # --- FILTRO POR MES/AÑO ---
     if fecha:
-        query += ' AND p.fecha = ?'
-        params.append(fecha)
+        try:
+            mes, anio = fecha.split('/')
+            query += " AND strftime('%m', p.fecha) = ? AND strftime('%Y', p.fecha) = ?"
+            params.extend([mes.zfill(2), anio])
+        except ValueError:
+            pass  # Si el formato es incorrecto, no aplicamos filtro
 
     if estado:
         query += ' AND p.estado = ?'
@@ -666,7 +687,7 @@ def pedidos():
 
     pedidos_agrupados = list(pedidos_agrupados.values())
 
-    # Cargar lista de clientes para otros usos (opcional)
+    # Lista de clientes
     c.execute('SELECT id, nombre FROM clientes ORDER BY nombre')
     clientes = c.fetchall()
 
@@ -675,6 +696,7 @@ def pedidos():
     return render_template('pedidos.html',
                            pedidos_agrupados=pedidos_agrupados,
                            clientes=clientes)
+
 
 @app.route('/imprimir_pedido/<int:cliente_id>/<fecha>/<estado>')
 @login_required
@@ -839,19 +861,27 @@ def editar_pedido(cliente_id, fecha, estado):
 @login_required
 def eliminar_pedido(id):
     with get_conn() as conn:
-        conn.execute('DELETE FROM pedidos WHERE id = ?', (id,))
-        conn.commit()
+        pedido = conn.execute('SELECT id FROM pedidos WHERE id = ?', (id,)).fetchone()
+        if pedido:
+            conn.execute('DELETE FROM pedidos WHERE id = ?', (id,))
+            conn.commit()
+            flash('Pedido eliminado correctamente.', 'success')
+        else:
+            flash('Pedido no encontrado.', 'warning')
     return redirect(url_for('pedidos'))
 
-@app.route('/marcar_completo/<int:id>')
+@app.route('/marcar_finalizado/<int:id>')
 @login_required
-def marcar_completo(id):
+def marcar_finalizado(id):
     with get_conn() as conn:
         pedido = conn.execute('SELECT cliente_id, fecha FROM pedidos WHERE id = ?', (id,)).fetchone()
         if pedido:
-            conn.execute('UPDATE pedidos SET estado = "completo" WHERE cliente_id = ? AND fecha = ?',
+            conn.execute('UPDATE pedidos SET estado = "finalizado" WHERE cliente_id = ? AND fecha = ?',
                          (pedido['cliente_id'], pedido['fecha']))
             conn.commit()
+            flash('Pedido marcado como finalizado.', 'success')
+        else:
+            flash('Pedido no encontrado.', 'danger')
     return redirect(url_for('pedidos'))
 
 @app.route('/marcar_pendiente/<int:id>')
@@ -863,6 +893,9 @@ def marcar_pendiente(id):
             conn.execute('UPDATE pedidos SET estado = "pendiente" WHERE cliente_id = ? AND fecha = ?',
                          (pedido['cliente_id'], pedido['fecha']))
             conn.commit()
+            flash('Pedido marcado como pendiente.', 'success')
+        else:
+            flash('Pedido no encontrado.', 'danger')
     return redirect(url_for('pedidos'))
 
 # === COMPRAS ===

@@ -1,5 +1,11 @@
 {% extends 'base.html' %}
+{% block title %}Pedidos{% endblock %}
 {% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/index.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css">
+
 <br>
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h2 class="mb-0">Pedidos</h2>
@@ -7,17 +13,45 @@
 </div>
 
 <!-- FILTROS -->
-<form method="get" id="form-filtros" class="mb-3 d-flex justify-content-between flex-wrap gap-3 align-items-end">
+<form method="get" id="form-filtros" class="mb-3 d-flex justify-content-between align-items-end flex-wrap">
 
-  <div class="d-flex gap-2" style="flex-grow: 1; min-width: 300px;">
-    <input id="searchClientes" name="cliente" type="search" class="form-control" placeholder="Buscar cliente..." value="{{ request.args.get('cliente', '') }}">
-    <input type="date" name="fecha" id="fecha" class="form-control" value="{{ request.args.get('fecha', '') }}" style="max-width: 180px;">
+  <!-- IZQUIERDA: cliente + fecha -->
+  <div class="d-flex gap-2 align-items-center" style="max-width: 450px; flex-grow: 0;">
+    <input id="searchClientes" name="cliente" type="search"
+           class="form-control filtro-activo-si"
+           placeholder="Buscar cliente..."
+           value="{{ request.args.get('cliente', '') }}"
+           style="min-width: 200px; max-width: 250px;">
+
+    <div style="position: relative; width: 140px;">
+      <input id="fecha" name="fecha" type="text"
+             class="form-control filtro-fecha {{ 'filtro-activo' if request.args.get('fecha') else '' }}"
+             placeholder="MM/YYYY"
+             value="{{ request.args.get('fecha', '') }}" autocomplete="off"
+             style="padding-right: 30px;">
+      <button type="button" id="btn-clear-fecha" title="Borrar filtro fecha" style="
+        position: absolute;
+        right: 5px;
+        top: 50%;
+        transform: translateY(-50%);
+        border: none;
+        background: transparent;
+        color: #aaa;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+        padding: 0;
+        user-select: none;
+      ">&times;</button>
+    </div>
   </div>
 
-  <div style="min-width: 150px;">
+  <!-- DERECHA: estado -->
+  <div style="min-width: 150px; flex-grow: 0;">
     <label for="estado" class="form-label">Estado:</label>
-    <select name="estado" id="estado" class="form-select">
-      <option value="">Todos</option>
+    <select name="estado" id="estado" class="form-select filtro-activo-si" style="min-width: 150px;">
+      <option value="" {% if not request.args.get('estado') %}selected{% endif %}>Todos</option>
       <option value="pendiente" {% if request.args.get('estado') == 'pendiente' %}selected{% endif %}>Pendiente</option>
       <option value="finalizado" {% if request.args.get('estado') == 'finalizado' %}selected{% endif %}>Finalizado</option>
     </select>
@@ -52,7 +86,7 @@
           {% if grupo.estado == 'pendiente' %}
             <a href="{{ url_for('editar_pedido', cliente_id=grupo.cliente_id, fecha=grupo.fecha, estado=grupo.estado) }}" class="btn btn-primary btn-sm">Editar</a>
             <a href="{{ url_for('imprimir_pedido', cliente_id=grupo.cliente_id, fecha=grupo.fecha, estado=grupo.estado) }}" class="btn btn-info btn-sm">Detalle</a>
-            <a href="{{ url_for('marcar_completo', id=grupo.pedidos[0].id) }}" class="btn btn-success btn-md mt-1">Finalizar</a>
+            <a href="{{ url_for('marcar_finalizado', id=grupo.pedidos[0].id) }}" class="btn btn-success btn-md mt-1">Finalizar</a>
           {% else %}
             <span class="badge bg-secondary fs-8 mt-1">Finalizado</span>
           {% endif %}
@@ -62,19 +96,97 @@
   </tbody>
 </table>
 
+<style>
+.filtro-fecha.filtro-activo {
+    background-color: #007bff;
+    color: white;
+    font-weight: bold;
+}
+.filtro-fecha.filtro-activo::placeholder {
+    color: white;
+}
+.filtro-fecha.filtro-activo,
+.filtro-activo-si:not(:placeholder-shown):not([value=""]),
+.filtro-activo-si option[value]:checked:not([value=""]) {
+  background-color: #007bff !important;
+  color: white !important;
+  font-weight: bold;
+}
 
+.filtro-fecha.filtro-activo::placeholder {
+  color: white !important;
+}
+</style>
 
 <script>
-  // Enviar el formulario automáticamente cuando cambien los filtros
-  document.getElementById('searchClientes').addEventListener('input', () => {
-    document.getElementById('form-filtros').submit();
-  });
-  document.getElementById('fecha').addEventListener('change', () => {
-    document.getElementById('form-filtros').submit();
-  });
-  document.getElementById('estado').addEventListener('change', () => {
-    document.getElementById('form-filtros').submit();
-  });
-</script>
 
+
+function actualizarClasesFiltro() {
+  const cliente = document.getElementById('searchClientes');
+  const estado = document.getElementById('estado');
+
+  if (cliente.value.trim() !== '') {
+    cliente.classList.add('filtro-activo-si');
+  } else {
+    cliente.classList.remove('filtro-activo-si');
+  }
+
+  if (estado.value !== '') {
+    estado.classList.add('filtro-activo-si');
+  } else {
+    estado.classList.remove('filtro-activo-si');
+  }
+}
+
+document.getElementById('searchClientes').addEventListener('input', () => {
+  actualizarClasesFiltro();
+  document.getElementById('form-filtros').submit();
+});
+document.getElementById('fecha').addEventListener('change', () => {
+  document.getElementById('form-filtros').submit();
+});
+document.getElementById('estado').addEventListener('change', () => {
+  actualizarClasesFiltro();
+  document.getElementById('form-filtros').submit();
+});
+
+window.addEventListener('load', actualizarClasesFiltro);
+
+// Inicializamos flatpickr con selección de mes/año
+flatpickr("#fecha", {
+  plugins: [
+    new monthSelectPlugin({
+      shorthand: true,
+      dateFormat: "m/Y",
+      altFormat: "m/Y",
+    })
+  ],
+  allowInput: true,
+  onReady: function(selectedDates, dateStr, instance) {
+    const clearBtn = document.createElement('button');
+    clearBtn.textContent = 'Borrar';
+    clearBtn.type = 'button';
+    clearBtn.classList.add('custom-clear-btn');
+    clearBtn.style.padding = '4px 8px';
+    clearBtn.style.fontSize = '13px';
+    clearBtn.style.margin = '5px auto';
+    clearBtn.style.display = 'block';
+    clearBtn.addEventListener('click', function() {
+      instance.clear();
+      instance.close();
+      document.getElementById('form-filtros').submit();
+    });
+    instance.calendarContainer.appendChild(clearBtn);
+  },
+});
+
+// Botón externo para borrar fecha
+const btnClear = document.getElementById('btn-clear-fecha');
+btnClear.addEventListener('click', () => {
+  const inputFecha = document.getElementById('fecha');
+  inputFecha.value = '';
+  inputFecha.classList.remove('filtro-activo');
+  document.getElementById('form-filtros').submit();
+});
+</script>
 {% endblock %}

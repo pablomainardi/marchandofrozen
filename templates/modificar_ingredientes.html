@@ -75,6 +75,7 @@
     {% endfor %}
   </tbody>
 </table>
+
 <!-- Modal Agregar -->
 <div class="modal fade" id="addIngredienteModal" tabindex="-1" aria-labelledby="addIngredienteLabel" aria-hidden="true">
   <div class="modal-dialog">
@@ -85,10 +86,14 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-3">
-            <label for="addCodigoBarra" class="form-label">Código de Barra</label>
-            <input name="codigo_barra" type="text" class="form-control" id="addCodigoBarra" list="listaCodigosBarra">
-          </div>
+          <!-- Campo Código de Barra en Modal Agregar -->
+<div class="mb-3">
+  <label for="addCodigoBarra" class="form-label">Códigos de Barra</label>
+  <input name="codigo_barra" type="text" class="form-control" id="addCodigoBarra" 
+         placeholder="Ej: 7791720034439,7791720034440" list="lista_codigos">
+  <small class="text-muted">Puedes ingresar varios códigos separados por coma.</small>
+</div>
+
           <div class="mb-3">
             <label for="addProducto" class="form-label">Producto</label>
             <input name="producto" type="text" class="form-control" id="addProducto" required>
@@ -138,15 +143,14 @@
         </div>
         <div class="modal-body">
           <input type="hidden" name="id" id="editIngredienteId" />
-          <div class="mb-3">
-  <label for="editCodigoBarra" class="form-label">Código de Barra</label>
-  <input name="codigo_barra" type="text" class="form-control" id="editCodigoBarra" list="listaCodigosBarra">
-  <datalist id="listaCodigosBarra">
-    {% for c in codigos_barra %}
-      <option value="{{ c }}">
-    {% endfor %}
-  </datalist>
+          <!-- Campo Código de Barra en Modal Editar -->
+<div class="mb-3">
+  <label for="editCodigoBarra" class="form-label">Códigos de Barra</label>
+  <textarea name="codigo_barra" class="form-control" id="editCodigoBarra" rows="2"
+            placeholder="Ej: 7791720034439,7791720034440"></textarea>
+  <small class="text-muted">Puedes editar o agregar varios códigos separados por coma.</small>
 </div>
+
           <div class="mb-3">
             <label for="editProducto" class="form-label">Producto</label>
             <input name="producto" type="text" class="form-control" id="editProducto" required>
@@ -156,14 +160,14 @@
             <input name="tipo" type="text" class="form-control" id="editTipo">
           </div>
           <div class="mb-3">
-  <label for="editReferencia" class="form-label">Referencia</label>
-  <input name="referencia" type="text" class="form-control" id="editReferencia" list="listaReferencias">
-  <datalist id="listaReferencias">
-    {% for ref in referencias %}
-      <option value="{{ ref }}">
-    {% endfor %}
-  </datalist>
-</div>
+            <label for="editReferencia" class="form-label">Referencia</label>
+            <input name="referencia" type="text" class="form-control" id="editReferencia" list="listaReferencias">
+            <datalist id="listaReferencias">
+              {% for ref in referencias %}
+                <option value="{{ ref }}">
+              {% endfor %}
+            </datalist>
+          </div>
           <div class="mb-3">
             <label for="editCantidad" class="form-label">Cantidad</label>
             <input name="cantidad" type="number" step="any" class="form-control" id="editCantidad" required>
@@ -190,6 +194,31 @@
     </form>
   </div>
 </div>
+<!-- Modal Importar Excel -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form action="{{ url_for('importar_ingredientes') }}" method="POST" enctype="multipart/form-data">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="importModalLabel">Importar Ingredientes desde Excel</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2">
+            Debe tener las siguientes columnas:
+            <br>
+            <strong>producto, cantidad, unidad, tipo, referencia, codigo_barra, costo_total</strong>.
+          </p>
+          <input type="file" name="archivo_excel" accept=".xlsx,.xls" class="form-control" required>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Importar</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
 
 {% include 'modal_escaner.html' %}
 {% endblock %}
@@ -202,23 +231,22 @@
 document.addEventListener("DOMContentLoaded", () => {
 
   // --- Filtro de tabla ---
-window.filterTable = function() {
-  const term = normalizeText(document.getElementById('searchInput').value);
-  const rows = document.querySelectorAll('#ingredientesTable tbody tr');
-  rows.forEach(row => {
-    const producto = normalizeText(row.cells[1].textContent);
-    row.style.display = producto.includes(term) ? '' : 'none';
-  });
-};
+  window.filterTable = function() {
+    const term = normalizeText(document.getElementById('searchInput').value);
+    const rows = document.querySelectorAll('#ingredientesTable tbody tr');
+    rows.forEach(row => {
+      const producto = normalizeText(row.cells[1].textContent);
+      row.style.display = producto.includes(term) ? '' : 'none';
+    });
+  };
 
-// Función para normalizar texto (eliminar acentos y pasar a minúsculas)
-function normalizeText(text) {
-  return text
-    .toLowerCase()
-    .normalize("NFD") // separa caracteres base de diacríticos
-    .replace(/[\u0300-\u036f]/g, ""); // elimina diacríticos
-}
-
+  // Función para normalizar texto (eliminar acentos y pasar a minúsculas)
+  function normalizeText(text) {
+    return text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  }
 
   // --- Editar ingrediente desde botón ---
   window.editarIngredienteDesdeBoton = function(btn) {
@@ -248,17 +276,13 @@ function normalizeText(text) {
   const scanMessage = document.getElementById('scan-message');
   const videoContainer = document.getElementById('video-container');
 
-  // Función para obtener deviceId de cámara trasera o primera cámara disponible
   async function obtenerCamaraPorDefecto() {
     try {
-      // Pedir permiso para acceder a cámara
       await navigator.mediaDevices.getUserMedia({ video: true });
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter(d => d.kind === "videoinput");
-      // Buscar cámara trasera por label (back, rear, environment)
       const trasera = videoDevices.find(d => /back|rear|environment/i.test(d.label));
       if (trasera) return trasera.deviceId;
-      // Si no hay cámara trasera, usar la primera disponible
       return videoDevices.length ? videoDevices[0].deviceId : null;
     } catch (error) {
       console.error("Error al obtener cámaras:", error);
@@ -298,12 +322,6 @@ function normalizeText(text) {
       scanMessage.textContent = "Escaneando...";
     });
 
-    Quagga.onProcessed((result) => {
-      if (result) {
-        console.log("Analizando frame...");
-      }
-    });
-
     Quagga.onDetected((data) => {
       const codigo = data.codeResult.code;
       console.log("Código detectado:", codigo);
@@ -331,7 +349,7 @@ function normalizeText(text) {
           const p = data.producto;
           document.getElementById('id_producto').value = p.id;
           document.getElementById('producto').value = p.producto || '';
-          document.getElementById('comentario').value = p.referencia || '';
+          document.getElementById('referencia').value = p.referencia || '';
           document.getElementById('tipo').value = p.tipo || '';
           document.getElementById('cantidad').value = p.cantidad || '';
           document.getElementById('unidad').value = p.unidad || 'unidad';
@@ -347,6 +365,8 @@ function normalizeText(text) {
     document.getElementById('id_producto').value = '';
     document.getElementById('codigo_barra').value = codigo;
     document.getElementById('producto').value = '';
+    document.getElementById('referencia').value = '';
+    document.getElementById('tipo').value = '';
     document.getElementById('cantidad').value = '';
     document.getElementById('unidad').value = 'unidad';
     document.getElementById('costo_total').value = '';
@@ -367,7 +387,5 @@ function normalizeText(text) {
   });
 
 });
-
 </script>
-  
 {% endblock %}

@@ -2,13 +2,7 @@
 {% block content %}
 <h2>Editar Pedido</h2>
 
-{% if pedido.estado == 'completo' %}
-  <div class="alert alert-warning">
-    Este pedido está marcado como <strong>completo</strong>. Para editarlo, primero debe volver a estado <strong>pendiente</strong>.
-  </div>
-{% endif %}
-
-<form id="form-editar-pedido" method="post" {% if pedido.estado == 'completo' %}onsubmit="return false;"{% endif %}>
+<form id="form-editar-pedido" method="post" {% if pedido.estado == 'finalizado' %}onsubmit="return false;"{% endif %}>
   <div class="mb-3">
     <label for="cliente" class="form-label">Cliente</label>
     <select id="cliente" name="cliente_id" class="form-select" required>
@@ -25,9 +19,9 @@
 
   <div class="mb-3">
     <label for="estado" class="form-label">Estado</label>
-    <select id="estado" name="estado" class="form-select" required {% if pedido.estado == 'completo' %}disabled{% endif %}>
+    <select id="estado" name="estado" class="form-select" required {% if pedido.estado == 'finalizado' %}disabled{% endif %}>
       <option value="pendiente" {% if pedido.estado == 'pendiente' %}selected{% endif %}>Pendiente</option>
-      <option value="completo" {% if pedido.estado == 'completo' %}selected{% endif %}>Completo</option>
+      <option value="finalizado" {% if pedido.estado == 'finalizado' %}selected{% endif %}>Finalizado</option>
     </select>
   </div>
 
@@ -74,7 +68,9 @@
   <button type="submit" class="btn btn-success">Guardar Cambios</button>
   <a href="{{ url_for('pedidos') }}" class="btn btn-secondary">Cancelar</a>
 </form>
+{% endblock %}
 
+{% block extra_js %}
 <script>
   function actualizarTotales() {
     const filas = document.querySelectorAll('#tabla-recetas tbody tr');
@@ -170,7 +166,6 @@
     .then(res => res.json())
     .then(data => {
       if(data.status === 'ok'){
-        alert(data.msg);
         window.location.href = "{{ url_for('pedidos') }}";
       } else {
         alert('Error al guardar');
@@ -180,10 +175,9 @@
 
   actualizarTotales();
 
-  {% if pedido.estado == 'completo' %}
+  {% if pedido.estado == 'finalizado' %}
+    // Deshabilita todos los campos de edición si el pedido está finalizado.
     document.querySelectorAll('input, select, button').forEach(el => el.disabled = true);
-    document.querySelector('a.btn-secondary').disabled = false;
   {% endif %}
 </script>
-
 {% endblock %}
