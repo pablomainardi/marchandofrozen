@@ -3,52 +3,53 @@
 {% block content %}
 <h2>Editar Receta: {{ receta.nombre }}</h2>
 
-<form method="POST" action="{{ url_for('actualizar_receta', id=receta.id) }}" class="mb-4">
+<form method="POST" action="{{ url_for('actualizar_receta', id=receta.id) }}">
   <div class="mb-3">
     <label for="nombre" class="form-label">Nombre:</label>
     <input type="text" class="form-control" id="nombre" name="nombre" value="{{ receta.nombre }}" required>
   </div>
   <div class="mb-3">
-    <label for="referencia" class="form-label">referencia:</label>
+    <label for="referencia" class="form-label">Referencia:</label>
     <textarea class="form-control" id="referencia" name="referencia">{{ receta.referencia }}</textarea>
   </div>
+
+  <h3>Ingredientes</h3>
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>Ingrediente</th>
+        <th>Cantidad</th>
+        <th>Unidad</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for i in ingredientes %}
+      <tr>
+        <td>{{ i.producto }}</td>
+        <td>
+          <input type="hidden" name="ingredientes_ids" value="{{ i.ri_id }}">
+          <input type="number" step="0.01" name="cantidad_{{ i.ri_id }}" value="{{ i.cantidad }}" class="form-control" required>
+        </td>
+        <td>
+          <select name="unidad_{{ i.ri_id }}" class="form-select">
+            <option value="g" {% if i.unidad == 'g' %}selected{% endif %}>g</option>
+            <option value="ml" {% if i.unidad == 'ml' %}selected{% endif %}>ml</option>
+            <option value="unidad" {% if i.unidad == 'unidad' %}selected{% endif %}>unidad</option>
+          </select>
+        </td>
+        <td>
+          <a href="{{ url_for('eliminar_ingrediente_receta', ri_id=i.ri_id, receta_id=receta.id) }}" class="btn btn-sm btn-danger">Eliminar</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
   <button type="submit" class="btn btn-primary">Guardar Receta</button>
 </form>
 
-<h3>Ingredientes</h3>
-<table class="table table-bordered">
-  <thead>
-    <tr>
-      <th>Ingrediente</th>
-      <th>Cantidad</th>
-      <th>Unidad</th>
-      <th>Acciones</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for i in ingredientes %}
-    <form method="POST" action="{{ url_for('editar_ingrediente_receta', ri_id=i.ri_id) }}">
-  <tr>
-    <td>{{ i.producto }}</td>
-    <td><input type="number" step="0.01" name="cantidad" value="{{ i.cantidad }}" class="form-control" required></td>
-    <td>
-      <select name="unidad" class="form-select">
-        <option value="g" {% if i.unidad == 'g' %}selected{% endif %}>g</option>
-        <option value="ml" {% if i.unidad == 'ml' %}selected{% endif %}>ml</option>
-        <option value="unidad" {% if i.unidad == 'unidad' %}selected{% endif %}>unidad</option>
-      </select>
-    </td>
-    <td>
-      <button type="submit" class="btn btn-sm btn-success">Guardar</button>
-      <a href="{{ url_for('eliminar_ingrediente_receta', ri_id=i.ri_id, receta_id=receta.id) }}" class="btn btn-sm btn-danger">Eliminar</a>
-    </td>
-  </tr>
-</form>
-
-    {% endfor %}
-  </tbody>
-</table>
-
+<hr>
 <h4>Agregar Ingrediente</h4>
 <form method="POST" action="{{ url_for('agregar_ingrediente_receta', receta_id=receta.id) }}" class="row g-3">
   <div class="col-md-6">
@@ -78,7 +79,7 @@
   </div>
 </form>
 
-{% endblock %} 
+{% endblock %}
 {% block extra_js %}
 <script>
 const buscador = document.getElementById("buscador");
@@ -119,6 +120,4 @@ buscador.addEventListener("input", function () {
     });
 });
 </script>
-
 {% endblock %}
-

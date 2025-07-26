@@ -27,7 +27,7 @@ DB_PATH = os.path.join('marchando_base.db')  # Ajusta si tu DB está en otro lug
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-#        if not session.get('logged_in'): # PRUEBAS LOCALES
+ #       if not session.get('logged_in'): # PRUEBAS LOCALES
         if LOGIN_REQUIRED and not session.get('logged_in'):
             return redirect(url_for('login', next=request.path))
         return f(*args, **kwargs)
@@ -150,9 +150,13 @@ def editar_cliente(id):
 def eliminar_cliente(id):
     create_backup()
     with get_conn() as conn:
-        conn.execute('DELETE FROM clientes WHERE id=?', (id,))
+        # Borrar pedidos relacionados
+        conn.execute('DELETE FROM pedidos WHERE cliente_id = ?', (id,))
+        # Borrar cliente
+        conn.execute('DELETE FROM clientes WHERE id = ?', (id,))
         conn.commit()
     return redirect(url_for('clientes'))
+
 
 # --- RUTA: Buscar producto por código ---
 @app.route('/buscar_producto_por_codigo')
@@ -531,68 +535,82 @@ def presupuesto():
 
 
 # === PEDIDOS ===
-@app.route('/estadisticas_pedidos', methods=['GET', 'POST'])
+@app.route('/estadisticas_pedidos', methods=['GET'])
 @login_required
 def estadisticas_pedidos():
     conn = get_conn()
     cur = conn.cursor()
 
-    filtro = request.form.get('filtro', 'todos')
+    # Obtenemos el filtro de mes/año
+    fecha = request.args.get('fecha', '').strip()
+    filtro_sql = ""
+    params = []
+
+    if fecha:
+        # fecha viene como "MM/YYYY" desde el input flatpickr
+        try:
+            mes, anio = fecha.split('/')
+            mes = mes.zfill(2)  # Asegurar 2 dígitos
+            filtro_sql = " AND strftime('%m', p.fecha) = ? AND strftime('%Y', p.fecha) = ?"
+            params.extend([mes, anio])
+        except ValueError:
+            fecha = ""  # Si falla el split, no filtramos
 
     # Filtro base: solo pedidos finalizados
-    base_query = "SELECT * FROM pedidos WHERE estado = 'finalizado'"
-    pedidos = cur.execute(base_query).fetchall()
+    pedidos = cur.execute(
+        f"SELECT * FROM pedidos p WHERE p.estado = 'finalizado' {filtro_sql}",
+        params
+    ).fetchall()
 
     # Datos generales
     total_recetas = sum([p['cantidad'] for p in pedidos]) if pedidos else 0
     total_vendido = sum([p['precio_total'] for p in pedidos]) if pedidos else 0
 
     # Por cliente
-    clientes = cur.execute("""
+    clientes = cur.execute(f"""
         SELECT c.nombre AS cliente, 
                COUNT(p.id) AS total_pedidos, 
                SUM(p.precio_total) AS total_pagado
         FROM pedidos p
         JOIN clientes c ON p.cliente_id = c.id
-        WHERE p.estado = 'finalizado'
+        WHERE p.estado = 'finalizado' {filtro_sql}
         GROUP BY c.id
         ORDER BY total_pagado DESC
-    """).fetchall()
+    """, params).fetchall()
 
     # Por receta
-    recetas = cur.execute("""
+    recetas = cur.execute(f"""
         SELECT r.nombre AS receta, 
                SUM(p.cantidad) AS total_vendida
         FROM pedidos p
         JOIN recetas r ON p.receta_id = r.id
-        WHERE p.estado = 'finalizado'
+        WHERE p.estado = 'finalizado' {filtro_sql}
         GROUP BY r.id
         ORDER BY total_vendida DESC
-    """).fetchall()
+    """, params).fetchall()
 
     # Por ingrediente
-    ingredientes = cur.execute("""
+    ingredientes = cur.execute(f"""
         SELECT i.producto AS ingrediente,
                i.unidad AS unidad,
                SUM(ri.cantidad * p.cantidad) AS total_usado
         FROM pedidos p
         JOIN receta_ingredientes ri ON p.receta_id = ri.receta_id
         JOIN ingredientes i ON ri.ingrediente_id = i.id
-        WHERE p.estado = 'finalizado'
+        WHERE p.estado = 'finalizado' {filtro_sql}
         GROUP BY i.id
         ORDER BY total_usado DESC
-    """).fetchall()
+    """, params).fetchall()
 
     conn.close()
 
     return render_template('estadisticas_pedidos.html',
                            total_recetas=total_recetas,
                            total_vendido=total_vendido,
-                           filtro=filtro,
                            clientes=clientes,
                            recetas=recetas,
-                           ingredientes=ingredientes)
-
+                           ingredientes=ingredientes,
+                           fecha=fecha)
 
 
 @app.route('/cambiar_estado_pedido', methods=['GET'])
@@ -1091,15 +1109,38 @@ def editar_ingrediente_receta(ri_id):
     return redirect(url_for('modificar_receta', id=receta_id))
 
 # Actualizar nombre y referencia
+# Actualizar nombre, referencia y todos los ingredientes de la receta
 @app.route('/actualizar_receta/<int:id>', methods=['POST'])
 @login_required
 def actualizar_receta(id):
     create_backup()
     nombre = request.form['nombre']
-    referencia = request.form['referencia']
+    referencia = request.form.get('referencia', '')
+
     with get_conn() as conn:
-        conn.execute('UPDATE recetas SET nombre = ?, referencia = ? WHERE id = ?', (nombre, referencia, id))
+        # Actualizar los datos principales de la receta
+        conn.execute(
+            'UPDATE recetas SET nombre = ?, referencia = ? WHERE id = ?',
+            (nombre, referencia, id)
+        )
+
+        # Actualizar todos los ingredientes enviados
+        # Los IDs de ingredientes están en los inputs name="ingredientes_ids"
+        ingredientes_ids = request.form.getlist('ingredientes_ids')
+        for ri_id in ingredientes_ids:
+            cantidad = request.form.get(f'cantidad_{ri_id}')
+            unidad = request.form.get(f'unidad_{ri_id}')
+            if cantidad and unidad:
+                cantidad = float(cantidad)
+                conn.execute('''
+                    UPDATE receta_ingredientes
+                    SET cantidad = ?, unidad = ?, 
+                        costo_total = cantidad * costo_unitario
+                    WHERE id = ?
+                ''', (cantidad, unidad, ri_id))
+
         conn.commit()
+
     return redirect(url_for('ver_recetas'))
 
 # Agregar ingrediente a receta

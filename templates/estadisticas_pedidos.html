@@ -1,8 +1,41 @@
 {% extends 'base.html' %}
 {% block content %}
 
+<!-- Estilos y scripts para el selector mes/año -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/index.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css">
+
 <h2>📊 Estadísticas de Pedidos Finalizados</h2>
 <hr>
+
+<!-- Filtro de mes/año -->
+<form method="get" id="form-filtros" class="mb-4 d-flex gap-2 align-items-center">
+  <div style="position: relative; width: 160px;">
+    <input id="fecha" name="fecha" type="text"
+           class="form-control {{ 'filtro-activo' if request.args.get('fecha') else '' }}"
+           placeholder="MM/YYYY"
+           value="{{ request.args.get('fecha', '') }}" autocomplete="off"
+           style="padding-right: 30px;">
+    <button type="button" id="btn-clear-fecha" title="Borrar filtro fecha" style="
+      position: absolute;
+      right: 5px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: none;
+      background: transparent;
+      color: #aaa;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      padding: 0;
+      user-select: none;
+    ">&times;</button>
+  </div>
+  <button type="submit" class="btn btn-primary">Filtrar</button>
+</form>
 
 <!-- Totales generales -->
 <div class="row mb-4">
@@ -110,9 +143,44 @@
     }
   }
 
-  // Mostrar todo al cargar
   document.addEventListener('DOMContentLoaded', function () {
     filtrar('todos');
+  });
+
+  // Inicializamos flatpickr con selección de mes/año
+  flatpickr("#fecha", {
+    plugins: [
+      new monthSelectPlugin({
+        shorthand: true,
+        dateFormat: "m/Y",
+        altFormat: "m/Y",
+      })
+    ],
+    allowInput: true,
+    onReady: function(selectedDates, dateStr, instance) {
+      const clearBtn = document.createElement('button');
+      clearBtn.textContent = 'Borrar';
+      clearBtn.type = 'button';
+      clearBtn.classList.add('custom-clear-btn');
+      clearBtn.style.padding = '4px 8px';
+      clearBtn.style.fontSize = '13px';
+      clearBtn.style.margin = '5px auto';
+      clearBtn.style.display = 'block';
+      clearBtn.addEventListener('click', function() {
+        instance.clear();
+        instance.close();
+        document.getElementById('form-filtros').submit();
+      });
+      instance.calendarContainer.appendChild(clearBtn);
+    },
+  });
+
+  // Botón externo para borrar fecha
+  const btnClear = document.getElementById('btn-clear-fecha');
+  btnClear.addEventListener('click', () => {
+    const inputFecha = document.getElementById('fecha');
+    inputFecha.value = '';
+    document.getElementById('form-filtros').submit();
   });
 </script>
 
