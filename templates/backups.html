@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Backups{% endblock %}
+
+{% block content %}
+<h2>Gestión de Backups</h2>
+
+<!-- Botones de acciones -->
+<div class="mb-3 d-flex gap-2">
+  <form action="{{ url_for('backups.crear_backup_manual') }}" method="POST">
+    <button type="submit" class="btn btn-success">Crear Backup</button>
+  </form>
+  <button type="button" class="btn btn-secondary" onclick="seleccionarTodos(true)">Marcar todos</button>
+  <button type="button" class="btn btn-secondary" onclick="seleccionarTodos(false)">Desmarcar todos</button>
+</div>
+
+<form action="{{ url_for('backups.eliminar_backups') }}" method="POST" onsubmit="return confirm('¿Eliminar backups seleccionados?')">
+  <table class="table table-striped table-hover">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Archivo</th>
+        <th>Fecha</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if archivos %}
+        {% for archivo in archivos %}
+        <tr>
+          <td><input type="checkbox" name="archivos" value="{{ archivo }}"></td>
+          <td><a href="{{ url_for('static', filename='backups/' ~ archivo) }}" download>{{ archivo }}</a></td>
+          <td>{{ archivo[7:11] }}-{{ archivo[11:13] }}-{{ archivo[13:15] }} {{ archivo[16:18] }}:{{ archivo[18:20] }}:{{ archivo[20:22] }}</td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="3" class="text-center">No hay backups disponibles.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <button type="submit" class="btn btn-danger">Eliminar seleccionados</button>
+</form>
+
+<script>
+function seleccionarTodos(estado) {
+  document.querySelectorAll('input[name="archivos"]').forEach(cb => cb.checked = estado);
+}
+</script>
+{% endblock %}

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file, jsonify
+from flask import Flask, Blueprint, render_template, request, redirect, url_for, session, flash, send_file, jsonify
 import sqlite3
 from functools import wraps
 from datetime import datetime, timedelta
@@ -6,7 +6,7 @@ import pandas as pd
 import io
 import os
 from collections import defaultdict
-
+import zipfile
 
 app = Flask(__name__)
 #app.secret_key = os.environ.get('SECRET_KEY', 'esta_es_una_clave_secreta_para_desarrollo') # PRUEBAS LOCALES
@@ -17,6 +17,12 @@ ACCESS_CODE = os.environ.get('ACCESS_CODE')  # o el código que quieras por defe
 DB_NAME = 'marchando_base.db'
 
 LOGIN_REQUIRED = False  # Cambiar a True para activar validación
+
+bp_backups = Blueprint('backups', __name__)
+
+BACKUP_DIR = os.path.join('static', 'backups')
+DB_PATH = os.path.join('marchando_base.db')  # Ajusta si tu DB está en otro lugar
+
 
 def login_required(f):
     @wraps(f)
@@ -55,6 +61,53 @@ def get_conn():
 def index():
     return render_template('index.html')
 
+# --- backups ----
+def ensure_backup_dir():
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+
+def create_backup():
+    """Crear un backup ZIP de la base actual."""
+    ensure_backup_dir()
+    now = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_name = f"backup_{now}.zip"
+    backup_path = os.path.join(BACKUP_DIR, backup_name)
+    with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.write(DB_PATH, arcname=os.path.basename(DB_PATH))
+    return backup_name
+
+@bp_backups.route('/backups')
+@login_required
+def listar_backups():
+    ensure_backup_dir()
+    archivos = sorted(
+        [f for f in os.listdir(BACKUP_DIR) if f.endswith('.zip')],
+        reverse=True
+    )
+    return render_template('backups.html', archivos=archivos)
+
+@bp_backups.route('/backups/crear', methods=['POST'])
+@login_required
+def crear_backup_manual():
+    nombre = create_backup()
+    flash(f'Backup {nombre} creado correctamente.', 'success')
+    return redirect(url_for('backups.listar_backups'))
+
+@bp_backups.route('/backups/eliminar', methods=['POST'])
+@login_required
+def eliminar_backups():
+    seleccionados = request.form.getlist('archivos')
+    if not seleccionados:
+        flash('No seleccionaste ningún backup para eliminar.', 'warning')
+        return redirect(url_for('backups.listar_backups'))
+    eliminados = []
+    for archivo in seleccionados:
+        ruta = os.path.join(BACKUP_DIR, archivo)
+        if os.path.exists(ruta):
+            os.remove(ruta)
+            eliminados.append(archivo)
+    flash(f'{len(eliminados)} backup(s) eliminado(s) correctamente.', 'success')
+    return redirect(url_for('backups.listar_backups'))
+
 # === CLIENTES ===
 @app.route('/clientes')
 @login_required
@@ -73,6 +126,7 @@ def clientes():
 @app.route('/clientes/nuevo', methods=['POST'])
 @login_required
 def nuevo_cliente():
+    create_backup()
     data = request.form
     with get_conn() as conn:
         conn.execute('INSERT INTO clientes (nombre, contacto, direccion) VALUES (?, ?, ?)',
@@ -83,6 +137,7 @@ def nuevo_cliente():
 @app.route('/clientes/editar/<int:id>', methods=['POST'])
 @login_required
 def editar_cliente(id):
+    create_backup()
     data = request.form
     with get_conn() as conn:
         conn.execute('UPDATE clientes SET nombre=?, contacto=?, direccion=? WHERE id=?',
@@ -93,6 +148,7 @@ def editar_cliente(id):
 @app.route('/clientes/eliminar/<int:id>')
 @login_required
 def eliminar_cliente(id):
+    create_backup()
     with get_conn() as conn:
         conn.execute('DELETE FROM clientes WHERE id=?', (id,))
         conn.commit()
@@ -124,6 +180,7 @@ def buscar_producto_por_codigo():
 @app.route('/guardar_producto', methods=['POST'])
 @login_required
 def guardar_producto():
+    create_backup()
     data = request.form
     codigo_barra = data.get('codigo_barra', '').strip()  # Puede ser un único código
     producto = data.get('producto', '').strip()
@@ -179,6 +236,7 @@ def guardar_producto():
 @app.route('/ingredientes/editar/<int:id>', methods=['POST'])
 @login_required
 def editar_ingrediente(id):
+    create_backup()
     data = request.form
     codigo_barra = data.get('codigo_barra', '').strip()  # Aquí puede haber varios códigos separados por coma
     producto = data['producto']
@@ -204,6 +262,7 @@ def editar_ingrediente(id):
 @app.route('/ingredientes/eliminar/<int:id>')
 @login_required
 def eliminar_ingrediente(id):
+    create_backup()
     with get_conn() as conn:
         conn.execute('DELETE FROM ingredientes WHERE id = ?', (id,))
         conn.commit()
@@ -213,6 +272,7 @@ def eliminar_ingrediente(id):
 @app.route('/ingredientes/agregar', methods=['POST'])
 @login_required
 def agregar_ingrediente():
+    create_backup()
     data = request.form
     producto = data['producto']
     cantidad = float(data['cantidad'])
@@ -291,6 +351,7 @@ def exportar_ingredientes():
 @app.route('/importar_ingredientes', methods=['POST'])
 @login_required
 def importar_ingredientes():
+    create_backup()
     archivo = request.files.get('archivo_excel')
     if not archivo:
         flash('No se seleccionó archivo para importar.', 'danger')
@@ -347,6 +408,7 @@ def buscar_ingrediente():
 @app.route('/eliminar_receta/<int:id>')
 @login_required
 def eliminar_receta(id):
+    create_backup()
     with get_conn() as conn:
         conn.execute('DELETE FROM recetas WHERE id = ?', (id,))
         conn.execute('DELETE FROM receta_ingredientes WHERE receta_id = ?', (id,))
@@ -375,13 +437,25 @@ def ver_recetas():
 @login_required
 def nueva_receta():
     if request.method == 'POST':
+        create_backup()
         nombre = request.form['nombre']
-        referencia = request.form.get('referencia', '')
+        comentario = request.form.get('referencia', '')  # Cambié a comentario porque tu tabla recetas no tiene 'referencia'
+
         with get_conn() as conn:
-            conn.execute('INSERT INTO recetas (nombre, referencia) VALUES (?, ?)', (nombre, referencia))
+            cursor = conn.cursor()
+            cursor.execute(
+                'INSERT INTO recetas (nombre, referencia) VALUES (?, ?)',
+                (nombre, comentario)
+            )
+            receta_id = cursor.lastrowid
             conn.commit()
-        return redirect(url_for('ver_recetas'))
+
+        # Redirigir directamente a la nueva receta
+        return redirect(url_for('modificar_receta', id=receta_id))
+
+
     return render_template('nueva_receta.html')
+
 
 @app.route("/receta/<int:receta_id>")
 @login_required
@@ -415,8 +489,10 @@ def ver_receta(receta_id):
 @app.route("/presupuesto", methods=["GET", "POST"])
 @login_required
 def presupuesto():
+    
     conn = get_conn()
     if request.method == "POST" and request.is_json:
+        create_backup()
         data = request.get_json()
         cliente_id = data.get("cliente_id")
         fecha = data.get("fecha")
@@ -567,6 +643,7 @@ def cambiar_estado_pedido_form():
 @app.route('/cambiar_estado_pedido', methods=['POST'])
 @login_required
 def cambiar_estado_pedido():
+    create_backup()
     accion = request.form.get('accion')
     conn = get_conn()
     cur = conn.cursor()
@@ -613,6 +690,7 @@ def cambiar_estado_pedido():
 @app.route('/finalizar_pedido/<int:cliente_id>/<fecha>/<estado>')
 @login_required
 def finalizar_pedido(cliente_id, fecha, estado):
+    create_backup()
     with get_conn() as conn:
         conn.execute('''
             UPDATE pedidos SET estado = 'finalizado'
@@ -736,6 +814,7 @@ def lista_precios():
     cur = conn.cursor()
 
     if request.method == 'POST':
+        create_backup()
         for key, value in request.form.items():
             if key.startswith('precio_'):
                 receta_id = key.replace('precio_', '')
@@ -786,8 +865,10 @@ def lista_precios():
 @app.route('/editar_pedido/<int:cliente_id>/<fecha>/<estado>', methods=['GET', 'POST'])
 @login_required
 def editar_pedido(cliente_id, fecha, estado):
+    
     with get_conn() as conn:
         if request.method == 'POST':
+            create_backup()
             if request.is_json:
                 data = request.get_json()
                 cliente_id_new = int(data['cliente_id'])
@@ -860,6 +941,7 @@ def editar_pedido(cliente_id, fecha, estado):
 @app.route('/eliminar_pedido/<int:id>')
 @login_required
 def eliminar_pedido(id):
+    create_backup()
     with get_conn() as conn:
         pedido = conn.execute('SELECT id FROM pedidos WHERE id = ?', (id,)).fetchone()
         if pedido:
@@ -873,6 +955,7 @@ def eliminar_pedido(id):
 @app.route('/marcar_finalizado/<int:id>')
 @login_required
 def marcar_finalizado(id):
+    create_backup()
     with get_conn() as conn:
         pedido = conn.execute('SELECT cliente_id, fecha FROM pedidos WHERE id = ?', (id,)).fetchone()
         if pedido:
@@ -887,6 +970,7 @@ def marcar_finalizado(id):
 @app.route('/marcar_pendiente/<int:id>')
 @login_required
 def marcar_pendiente(id):
+    create_backup()
     with get_conn() as conn:
         pedido = conn.execute('SELECT cliente_id, fecha FROM pedidos WHERE id = ?', (id,)).fetchone()
         if pedido:
@@ -979,6 +1063,7 @@ def compras():
 @app.route('/modificar_receta/<int:id>', methods=['GET'])
 @login_required
 def modificar_receta(id):
+    
     with get_conn() as conn:
         receta = conn.execute('SELECT * FROM recetas WHERE id = ?', (id,)).fetchone()
         ingredientes_receta = conn.execute('''
@@ -992,6 +1077,7 @@ def modificar_receta(id):
 @app.route('/editar_ingrediente_receta/<int:ri_id>', methods=['POST'])
 @login_required
 def editar_ingrediente_receta(ri_id):
+    create_backup()
     cantidad = float(request.form['cantidad'])
     unidad = request.form['unidad']
     with get_conn() as conn:
@@ -1008,6 +1094,7 @@ def editar_ingrediente_receta(ri_id):
 @app.route('/actualizar_receta/<int:id>', methods=['POST'])
 @login_required
 def actualizar_receta(id):
+    create_backup()
     nombre = request.form['nombre']
     referencia = request.form['referencia']
     with get_conn() as conn:
@@ -1019,6 +1106,7 @@ def actualizar_receta(id):
 @app.route('/agregar_ingrediente_receta/<int:receta_id>', methods=['POST'])
 @login_required
 def agregar_ingrediente_receta(receta_id):
+    create_backup()
     ingrediente_id = int(request.form['ingrediente_id'])
     cantidad = float(request.form['cantidad'])
     
@@ -1043,10 +1131,14 @@ def agregar_ingrediente_receta(receta_id):
 @app.route('/eliminar_ingrediente_receta/<int:ri_id>/<int:receta_id>')
 @login_required
 def eliminar_ingrediente_receta(ri_id, receta_id):
+    create_backup()
     with get_conn() as conn:
         conn.execute('DELETE FROM receta_ingredientes WHERE id = ?', (ri_id,))
         conn.commit()
     return redirect(url_for('modificar_receta', id=receta_id))
+
+# Registrar el blueprint de backups
+app.register_blueprint(bp_backups)
 
 if __name__ == '__main__':
     app.run(debug=True)
