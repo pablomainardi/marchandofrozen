@@ -149,6 +149,10 @@
   <textarea name="codigo_barra" class="form-control" id="editCodigoBarra" rows="2"
             placeholder="Ej: 7791720034439,7791720034440"></textarea>
   <small class="text-muted">Puedes editar o agregar varios códigos separados por coma.</small>
+  <br>
+  <button type="button" class="btn btn-outline-secondary btn-sm mt-2" onclick="abrirModalEscanerDesdeEdicion()">
+    Escanear nuevo código
+  </button>
 </div>
 
           <div class="mb-3">
@@ -335,31 +339,52 @@ document.addEventListener("DOMContentLoaded", () => {
     Quagga.stop();
   }
 
-  function onCodigoDetectado(codigo) {
-    detenerQuagga();
-    document.getElementById('formEscaner').style.display = 'block';
-    document.getElementById('cancelarEscanerBtn').style.display = 'inline-block';
-    document.getElementById('confirmarEscanerBtn').style.display = 'inline-block';
-    document.getElementById('codigo_barra').value = codigo;
+function onCodigoDetectado(codigo) {
+  detenerQuagga();
 
-    fetch(`/buscar_producto_por_codigo?codigo=${encodeURIComponent(codigo)}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.existe) {
-          const p = data.producto;
-          document.getElementById('id_producto').value = p.id;
-          document.getElementById('producto').value = p.producto || '';
-          document.getElementById('referencia').value = p.referencia || '';
-          document.getElementById('tipo').value = p.tipo || '';
-          document.getElementById('cantidad').value = p.cantidad || '';
-          document.getElementById('unidad').value = p.unidad || 'unidad';
-          document.getElementById('costo_total').value = p.costo_total || '';
-        } else {
-          resetFormularioInputs(codigo);
-        }
-      })
-      .catch(err => alert("Error consultando producto: " + err));
+  if (modoEscaner === "editar_ingrediente") {
+    const textarea = document.getElementById('editCodigoBarra');
+    const codigosActuales = textarea.value
+      .split(',')
+      .map(c => c.trim())
+      .filter(c => c.length > 0);
+
+    if (!codigosActuales.includes(codigo)) {
+      codigosActuales.push(codigo);
+      textarea.value = codigosActuales.join(',');
+    }
+
+    // Cerrar el modal del escáner
+    const modal = bootstrap.Modal.getInstance(document.getElementById('modalEscaner'));
+    modal.hide();
+    modoEscaner = null;
+    return;
   }
+
+  // 🧠 Modo normal: no tocamos nada de esta parte
+  document.getElementById('formEscaner').style.display = 'block';
+  document.getElementById('cancelarEscanerBtn').style.display = 'inline-block';
+  document.getElementById('confirmarEscanerBtn').style.display = 'inline-block';
+  document.getElementById('codigo_barra').value = codigo;
+
+  fetch(`/buscar_producto_por_codigo?codigo=${encodeURIComponent(codigo)}`)
+    .then(res => res.json())
+    .then(data => {
+      if (data.existe) {
+        const p = data.producto;
+        document.getElementById('id_producto').value = p.id;
+        document.getElementById('producto').value = p.producto || '';
+        document.getElementById('referencia').value = p.referencia || '';
+        document.getElementById('tipo').value = p.tipo || '';
+        document.getElementById('cantidad').value = p.cantidad || '';
+        document.getElementById('unidad').value = p.unidad || 'unidad';
+        document.getElementById('costo_total').value = p.costo_total || '';
+      } else {
+        resetFormularioInputs(codigo);
+      }
+    })
+    .catch(err => alert("Error consultando producto: " + err));
+}
 
   function resetFormularioInputs(codigo = '') {
     document.getElementById('id_producto').value = '';
@@ -385,6 +410,14 @@ document.addEventListener("DOMContentLoaded", () => {
     resetFormularioInputs();
     scanMessage.textContent = '';
   });
+
+  let modoEscaner = null;
+
+window.abrirModalEscanerDesdeEdicion = function() {
+  modoEscaner = "editar_ingrediente";
+  const modal = new bootstrap.Modal(document.getElementById('modalEscaner'));
+  modal.show();
+};
 
 });
 </script>
