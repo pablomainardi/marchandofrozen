@@ -27,7 +27,7 @@ DB_PATH = os.path.join('marchando_base.db')  # Ajusta si tu DB está en otro lug
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
- #       if not session.get('logged_in'): # PRUEBAS LOCALES
+  #      if not session.get('logged_in'): # PRUEBAS LOCALES
         if LOGIN_REQUIRED and not session.get('logged_in'):
             return redirect(url_for('login', next=request.path))
         return f(*args, **kwargs)
