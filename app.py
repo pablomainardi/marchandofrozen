@@ -9,10 +9,10 @@ from collections import defaultdict
 import zipfile
 
 app = Flask(__name__)
-#app.secret_key = os.environ.get('SECRET_KEY', 'esta_es_una_clave_secreta_para_desarrollo') # PRUEBAS LOCALES
-#ACCESS_CODE = os.environ.get('ACCESS_CODE', '1111')  # o el código que quieras por defecto - # PRUEBAS LOCALES 
-app.secret_key = os.environ.get('SECRET_KEY')  # ideal no usar valor por defecto en producción
-ACCESS_CODE = os.environ.get('ACCESS_CODE')  # o el código que quieras por defecto
+app.secret_key = os.environ.get('SECRET_KEY', 'esta_es_una_clave_secreta_para_desarrollo') # PRUEBAS LOCALES
+ACCESS_CODE = os.environ.get('ACCESS_CODE', '1111')  # o el código que quieras por defecto - # PRUEBAS LOCALES 
+#app.secret_key = os.environ.get('SECRET_KEY')  # ideal no usar valor por defecto en producción
+#ACCESS_CODE = os.environ.get('ACCESS_CODE')  # o el código que quieras por defecto
 
 DB_NAME = 'marchando_base.db'
 
@@ -27,8 +27,8 @@ DB_PATH = os.path.join('marchando_base.db')  # Ajusta si tu DB está en otro lug
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-#        if not session.get('logged_in'): # PRUEBAS LOCALES
-        if LOGIN_REQUIRED and not session.get('logged_in'):
+        if not session.get('logged_in'): # PRUEBAS LOCALES
+#        if LOGIN_REQUIRED and not session.get('logged_in'):
             return redirect(url_for('login', next=request.path))
         return f(*args, **kwargs)
     return decorated_function
@@ -204,7 +204,9 @@ def guardar_producto():
         return redirect(url_for('modificar_ingredientes'))
 
     costo_unitario = round(costo_total / cantidad, 4) if cantidad else 0
-    fecha_actual = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    fecha_actual = datetime.now().strftime('%d/%m/%Y')
+  # objeto date, sin hora
+
 
     with get_conn() as conn:
         # Buscar si alguno de los códigos ya existe en la base
@@ -216,18 +218,20 @@ def guardar_producto():
         if existente:
             # Actualizamos el producto
             conn.execute('''
-                UPDATE ingredientes SET
-                    producto = ?, cantidad = ?, unidad = ?, costo_total = ?,
-                    costo_unitario = ?, referencia = ?, tipo = ?, ultima_actualizacion = ?
-                WHERE id = ?
-            ''', (producto, cantidad, unidad, costo_total, costo_unitario, referencia, tipo, fecha_actual, existente['id']))
+    UPDATE ingredientes SET
+        producto = ?, cantidad = ?, unidad = ?, costo_total = ?,
+        costo_unitario = ?, referencia = ?, tipo = ?, ultima_actualizacion = ?
+    WHERE id = ?
+''', (producto, cantidad, unidad, costo_total, costo_unitario, referencia, tipo, fecha_actual, existente['id']))
             mensaje = "Producto actualizado correctamente."
         else:
             # Insertamos nuevo
             conn.execute('''
-                INSERT INTO ingredientes (producto, tipo, referencia, cantidad, unidad, costo_total, costo_unitario, ultima_actualizacion, codigo_barra)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (producto, tipo, referencia, cantidad, unidad, costo_total, costo_unitario, fecha_actual, codigo_barra))
+    INSERT INTO ingredientes (producto, tipo, referencia, cantidad, unidad, costo_total,
+                              costo_unitario, ultima_actualizacion, codigo_barra)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+''', (producto, tipo, referencia, cantidad, unidad, costo_total,
+      costo_unitario, fecha_actual, codigo_barra))
             mensaje = "Producto agregado correctamente."
 
         conn.commit()
@@ -250,14 +254,17 @@ def editar_ingrediente(id):
     tipo = data.get('tipo', '')
     costo_total = round(float(data['costo_total']), 2)
     costo_unitario = round(costo_total / cantidad, 4) if cantidad else 0
+    fecha_actual = datetime.now().strftime('%d/%m/%Y')
+  # objeto date, sin hora
 
     with get_conn() as conn:
         conn.execute('''
-            UPDATE ingredientes SET
-                producto = ?, cantidad = ?, unidad = ?, referencia = ?,
-                tipo = ?, costo_total = ?, costo_unitario = ?, codigo_barra = ?
-            WHERE id = ?
-        ''', (producto, cantidad, unidad, referencia, tipo, costo_total, costo_unitario, codigo_barra, id))
+    UPDATE ingredientes SET
+        producto = ?, cantidad = ?, unidad = ?, referencia = ?,
+        tipo = ?, costo_total = ?, costo_unitario = ?, codigo_barra = ?, ultima_actualizacion = ?
+    WHERE id = ?
+''', (producto, cantidad, unidad, referencia, tipo, costo_total,
+      costo_unitario, codigo_barra, fecha_actual, id))
         conn.commit()
 
     flash('Ingrediente actualizado correctamente', 'success')
@@ -286,15 +293,19 @@ def agregar_ingrediente():
     codigo_barra = data.get('codigo_barra', '').strip()  # <- NUEVO
     costo_total = round(float(data['costo_total']), 2)
     costo_unitario = round(costo_total / cantidad, 4) if cantidad else 0
+    fecha_actual = datetime.now().strftime('%d/%m/%Y')
+  # objeto date, sin hora
 
     with get_conn() as conn:
         conn.execute('''
-            INSERT INTO ingredientes (producto, cantidad, unidad, referencia, tipo, costo_total, costo_unitario, codigo_barra)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (producto, cantidad, unidad, referencia, tipo, costo_total, costo_unitario, codigo_barra))
+    INSERT INTO ingredientes (producto, cantidad, unidad, referencia, tipo,
+                              costo_total, costo_unitario, codigo_barra, ultima_actualizacion)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+''', (producto, cantidad, unidad, referencia, tipo,
+      costo_total, costo_unitario, codigo_barra, fecha_actual))
         conn.commit()
 
-    flash('Ingrediente agregado correctamente')
+    flash('Ingrediente agregado correctamente', 'success')
     return redirect(url_for('modificar_ingredientes'))
 
 
@@ -338,8 +349,9 @@ def modificar_ingredientes():
 def exportar_ingredientes():
     with get_conn() as conn:
         df = pd.read_sql_query("""
-            SELECT producto, cantidad, unidad, costo_total, tipo, referencia, codigo_barra
-            FROM ingredientes
+            SELECT producto, cantidad, unidad, costo_total, tipo, referencia,
+       codigo_barra, ultima_actualizacion
+FROM ingredientes
         """, conn)
 
     output = io.BytesIO()
@@ -352,6 +364,7 @@ def exportar_ingredientes():
 
 
 # --- Importar ingredientes con código de barra ---# --- Importar ingredientes con código de barra ---
+# --- Importar ingredientes con código de barra ---
 @app.route('/importar_ingredientes', methods=['POST'])
 @login_required
 def importar_ingredientes():
@@ -371,32 +384,51 @@ def importar_ingredientes():
 
     with get_conn() as conn:
         for _, row in df.iterrows():
-            producto = row.get('producto', '')
-            cantidad = float(row.get('cantidad', 0))
-            unidad = row.get('unidad', '')
-            tipo = row.get('tipo', '')
-            referencia = row.get('referencia', '')
+            producto = str(row.get('producto', '')).strip()
+            cantidad = float(row.get('cantidad', 0) or 0)
+            unidad = str(row.get('unidad', '')).strip()
+            tipo = str(row.get('tipo', '')).strip()
+            referencia = str(row.get('referencia', '')).strip()
             codigo_barra = str(row.get('codigo_barra', '')).strip()
-            costo_total = float(row.get('costo_total', 0))
-            costo_unitario = costo_total / cantidad if cantidad else 0
+            costo_total = float(row.get('costo_total', 0) or 0)
+            costo_unitario = round(costo_total / cantidad, 4) if cantidad else 0
 
-            conn.execute('''
-                INSERT INTO ingredientes (producto, cantidad, unidad, tipo, referencia, codigo_barra, costo_total, costo_unitario)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(producto) DO UPDATE SET
-                    cantidad=excluded.cantidad,
-                    unidad=excluded.unidad,
-                    tipo=excluded.tipo,
-                    referencia=excluded.referencia,
-                    codigo_barra=excluded.codigo_barra,
-                    costo_total=excluded.costo_total,
-                    costo_unitario=excluded.costo_unitario
-            ''', (producto, cantidad, unidad, tipo, referencia, codigo_barra, costo_total, costo_unitario))
+            existente = conn.execute('SELECT * FROM ingredientes WHERE producto = ?', (producto,)).fetchone()
+
+            if existente:
+                hubo_cambios = (
+                    float(existente['cantidad']) != cantidad or
+                    existente['unidad'] != unidad or
+                    existente['tipo'] != tipo or
+                    existente['referencia'] != referencia or
+                    existente['codigo_barra'] != codigo_barra or
+                    float(existente['costo_total']) != costo_total or
+                    round(float(existente['costo_unitario']), 4) != costo_unitario
+                )
+
+                if hubo_cambios:
+                    fecha_actual = datetime.now().strftime('%d/%m/%Y')
+                    conn.execute('''
+                        UPDATE ingredientes SET
+                            cantidad=?, unidad=?, tipo=?, referencia=?,
+                            codigo_barra=?, costo_total=?, costo_unitario=?, ultima_actualizacion=?
+                        WHERE producto=?
+                    ''', (cantidad, unidad, tipo, referencia, codigo_barra,
+                          costo_total, costo_unitario, fecha_actual, producto))
+            else:
+                fecha_actual = datetime.now().strftime('%d/%m/%Y')
+                conn.execute('''
+                    INSERT INTO ingredientes (producto, cantidad, unidad, tipo, referencia,
+                                              codigo_barra, costo_total, costo_unitario, ultima_actualizacion)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (producto, cantidad, unidad, tipo, referencia,
+                      codigo_barra, costo_total, costo_unitario, fecha_actual))
 
         conn.commit()
 
     flash('Ingredientes importados correctamente.', 'success')
     return redirect(url_for('modificar_ingredientes'))
+
 
 @app.route('/buscar_ingrediente')
 @login_required

@@ -41,6 +41,7 @@
       <th>Unidad</th>
       <th>Costo Total</th>
       <th>Costo Unitario</th>
+      <th>Última Actualización</th>
       <th>Acciones</th>
     </tr>
   </thead>
@@ -55,6 +56,7 @@
       <td>{{ i.unidad }}</td>
       <td>${{ "%.2f"|format(i.costo_total) }}</td>
       <td>${{ "%.4f"|format(i.costo_unitario) }}</td>
+      <td>{{ i.ultima_actualizacion if i.ultima_actualizacion else 'N/A' }}</td>
       <td>
         <button class="btn btn-sm btn-primary"
           data-id="{{ i.id }}"
