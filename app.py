@@ -61,7 +61,7 @@ def logout():
 #def get_conn():
 #    conn = sqlite3.connect(DB_NAME)
 #    conn.row_factory = sqlite3.Row
-#    return conn
+#    return conn 
 
 def get_conn():
     # Conexión directa al hosting remoto
