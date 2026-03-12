@@ -57,10 +57,21 @@ def logout():
     session.clear()
     flash('Has cerrado sesión.', 'info')
     return redirect(url_for('login'))
+# para habilitar local
+#def get_conn():
+#    conn = sqlite3.connect(DB_NAME)
+#    conn.row_factory = sqlite3.Row
+#    return conn
 
 def get_conn():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
+    # Conexión directa al hosting remoto
+    conn = mysql.connector.connect(
+        host="97j8os.h.filess.io",
+        user="marchando_base_swunggoose",
+        password="947e5010d57e22b4a674fc5e72c57332aeaab83a",
+        database="marchando_base_swunggoose",
+        port=3307  # reemplazá si tu hosting usa otro
+    )
     return conn
 
 @app.route('/')
@@ -97,10 +108,10 @@ def listar_backups():
 def subir_base():
     """Subir toda la base de datos local SQLite a la base remota MySQL"""
     # --- Configuración de conexión MySQL remota ---
-    MYSQL_HOST = "ghn5ta.h.filess.io"
-    MYSQL_USER = "marchando_base_printedsit"
-    MYSQL_PASSWORD = "408062eb22d5d09c39b8387032fb3f6cc4ebb6f3"
-    MYSQL_DB = "marchando_base_printedsit"
+    MYSQL_HOST = "97j8os.h.filess.io"
+    MYSQL_USER = "marchando_base_swunggoose"
+    MYSQL_PASSWORD = "947e5010d57e22b4a674fc5e72c57332aeaab83a"
+    MYSQL_DB = "marchando_base_swunggoose"
 
     # Conexión a SQLite local
     sqlite_conn = sqlite3.connect(DB_NAME)
