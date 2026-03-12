@@ -1,16 +1,107 @@
 {% extends "base.html" %}
 {% block title %}Nueva Receta{% endblock %}
 {% block content %}
+
 <h2>Agregar Nueva Receta</h2>
+
 <form method="POST" action="{{ url_for('nueva_receta') }}">
   <div class="mb-3">
     <label for="nombre" class="form-label">Nombre de la receta:</label>
     <input type="text" class="form-control" id="nombre" name="nombre" required>
   </div>
+
   <div class="mb-3">
     <label for="referencia" class="form-label">referencia:</label>
     <textarea class="form-control" id="referencia" name="referencia"></textarea>
   </div>
+
   <button type="submit" class="btn btn-success">Crear receta</button>
 </form>
+
+<br>
+<hr>
+<br>
+
+<h4>Duplicar receta existente</h4>
+
+<div class="mb-3" style="max-width:500px">
+  <input 
+    type="text" 
+    id="buscarReceta" 
+    class="form-control" 
+    placeholder="Buscar receta existente..."
+    autocomplete="off"
+  >
+</div>
+
+<div id="listaRecetas" class="list-group" style="max-width:500px"></div>
+
+<div class="mt-3">
+  <button 
+    type="button" 
+    id="btnDuplicar" 
+    class="btn btn-warning" 
+    disabled>
+    Duplicar receta
+  </button>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+
+<script>
+
+const recetas = {{ recetas|tojson }};
+
+const buscador = document.getElementById("buscarReceta");
+const lista = document.getElementById("listaRecetas");
+const btnDuplicar = document.getElementById("btnDuplicar");
+
+let recetaSeleccionada = null;
+
+buscador.addEventListener("input", function(){
+
+    const q = this.value.toLowerCase().trim();
+
+    lista.innerHTML = "";
+
+    if(q.length < 2) return;
+
+    recetas
+    .filter(r => r.nombre.toLowerCase().includes(q))
+    .slice(0,10)
+    .forEach(r => {
+
+        const item = document.createElement("div");
+
+        item.className = "list-group-item list-group-item-action";
+        item.textContent = r.nombre;
+
+        item.onclick = () => {
+
+            buscador.value = r.nombre;
+            recetaSeleccionada = r.id;
+
+            lista.innerHTML = "";
+            btnDuplicar.disabled = false;
+
+        };
+
+        lista.appendChild(item);
+
+    });
+
+});
+
+btnDuplicar.addEventListener("click", function(){
+
+    if(recetaSeleccionada){
+        window.location.href = `/duplicar_receta/${recetaSeleccionada}`;
+    }
+
+});
+
+</script>
+
 {% endblock %}

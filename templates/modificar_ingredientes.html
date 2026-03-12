@@ -13,19 +13,23 @@
 <div class="mb-3 d-flex justify-content-between flex-wrap gap-2">
   <input id="searchInput" type="search" class="form-control" placeholder="Buscar ingrediente..." style="max-width: 300px" onkeyup="filterTable()" />
 
-  <div class="d-flex gap-2">
+  <div class="d-flex gap-3">
+    <!-- Botón Actualizar Precios -->
+     <a href="{{ url_for('actualizar_precios') }}" class="btn btn-primary">
+  Actualizar Precios
+</a>
     <!-- Botón Escáner -->
     <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#modalEscaner">
       Editar por Escáner
     </button>
 
     <!-- Agregar Ingrediente -->
-    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addIngredienteModal">
+    <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#addIngredienteModal">
       Agregar Ingrediente
     </button>
 
     <a href="{{ url_for('exportar_ingredientes') }}" class="btn btn-success">Exportar Excel</a>
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#importModal">Importar Excel</button>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#importModal">Importar Excel</button>
   </div>
 </div>
 

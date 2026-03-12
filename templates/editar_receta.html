@@ -2,7 +2,35 @@
 {% block title %}Editar Receta{% endblock %}
 {% block content %}
 <h2>Editar Receta: {{ receta.nombre }}</h2>
+<h4>Agregar Ingrediente</h4>
+<form method="POST" action="{{ url_for('agregar_ingrediente_receta', receta_id=receta.id) }}" class="row g-3">
+  <div class="col-md-6">
+    <label class="form-label">Ingrediente:</label>
+    <input type="text" id="buscador" class="form-control" placeholder="Buscar ingrediente..." autocomplete="off">
+    <input type="hidden" name="ingrediente_id" id="ingrediente_id" required>
+    <div id="sugerencias" class="list-group"></div>
+  </div>
 
+  <div class="col-md-3">
+    <label class="form-label">Cantidad:</label>
+    <input type="number" step="0.01" name="cantidad" class="form-control" required>
+  </div>
+
+  <div class="col-md-3">
+    <label class="form-label">Unidad:</label>
+    <input type="text" id="unidad_mostrada" class="form-control" disabled>
+  </div>
+
+  <div class="col-md-3">
+    <label class="form-label">Tipo:</label>
+    <input type="text" id="tipo_mostrado" class="form-control" disabled>
+  </div>
+
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">Agregar Ingrediente</button>
+  </div>
+</form>
+<hr>
 <form method="POST" action="{{ url_for('actualizar_receta', id=receta.id) }}">
   <div class="mb-3">
     <label for="nombre" class="form-label">Nombre:</label>
@@ -47,36 +75,6 @@
   </table>
 
   <button type="submit" class="btn btn-primary">Guardar Receta</button>
-</form>
-
-<hr>
-<h4>Agregar Ingrediente</h4>
-<form method="POST" action="{{ url_for('agregar_ingrediente_receta', receta_id=receta.id) }}" class="row g-3">
-  <div class="col-md-6">
-    <label class="form-label">Ingrediente:</label>
-    <input type="text" id="buscador" class="form-control" placeholder="Buscar ingrediente..." autocomplete="off">
-    <input type="hidden" name="ingrediente_id" id="ingrediente_id" required>
-    <div id="sugerencias" class="list-group"></div>
-  </div>
-
-  <div class="col-md-3">
-    <label class="form-label">Cantidad:</label>
-    <input type="number" step="0.01" name="cantidad" class="form-control" required>
-  </div>
-
-  <div class="col-md-3">
-    <label class="form-label">Unidad:</label>
-    <input type="text" id="unidad_mostrada" class="form-control" disabled>
-  </div>
-
-  <div class="col-md-3">
-    <label class="form-label">Tipo:</label>
-    <input type="text" id="tipo_mostrado" class="form-control" disabled>
-  </div>
-
-  <div class="col-12">
-    <button type="submit" class="btn btn-primary">Agregar Ingrediente</button>
-  </div>
 </form>
 
 {% endblock %}

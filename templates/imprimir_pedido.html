@@ -1,59 +1,175 @@
 {% extends 'base.html' %}
 {% block content %}
 
-<h2>Pedido #{{ pedido.id }} — {{ pedido.cliente }} ({{ pedido.fecha }})</h2>
+<style>
 
-<div id="pedido-copia">
-<table border="1" cellpadding="5">
-  <thead>
-    <tr><th>Producto</th><th>Precio Unitario</th><th>Cantidad</th></tr>
-  </thead>
-  <tbody>
-    {% for item in detalles %}
-    <tr>
-      <td>{{ item.receta }}</td>
-      <td>${{ "%.2f"|format(item.precio_cliente) }}</td>
-      <td>{{ item.cantidad }}</td>
-    </tr>
-    {% endfor %}
-    <tr>
-      <td colspan="2"><strong>Total general</strong></td>
-      <td><strong>${{ "%.2f"|format(total_general) }}</strong></td>
-    </tr>
-  </tbody>
-</table>
+.recibo{
+    width:12cm;
+    min-height:9cm;
+    margin:auto;
+    background:white;
+    border:5px solid #444;
+    padding:14px;
+    font-size:13px;
+    position:relative;
+    /* Franja roja inferior */
+    border-bottom: 15px solid #af1d18f2; /* rojo estilo Marchando */
+}
+
+.header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:10px;
+}
+
+.logo img{
+    height:130px;
+}
+
+.titulo{
+    text-align:right;
+}
+
+.pedido-titulo{
+    font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
+    font-weight: bold;
+    font-size: 25px;
+    margin-bottom: 5px;
+    margin-top: 0;
+    color:#444;
+}
+
+.cliente-box{
+    margin-top:15px;
+    margin-bottom:20px;
+}
+
+.cliente-box strong{
+    display:block;
+    margin-bottom:5px;
+}
+
+.tabla-productos{
+    width:100%;
+    border-collapse:collapse;
+    border:2px solid #888; /* borde más grueso */
+}
+
+.tabla-productos th,
+.tabla-productos td{
+    border:1px solid #888;
+    padding:8px;
+    text-align:center;
+}
+
+.tabla-productos th{
+    background:#d6b36a;
+}
+
+.tabla-productos td.descripcion{
+    text-align:left;
+}
+
+.total-row td{
+    background:#d6b36a;
+    font-weight:bold;
+}
+
+.botones{
+    justify-self:center;
+    margin: 10px;
+}
+
+@media print{
+
+    body{
+        background:white;
+    }
+
+    .botones{
+        display:none;
+    }
+
+    .recibo{
+        border:2px solid #444;
+        page-break-inside:avoid;
+        border-bottom:8px solid #d6211b;
+    }
+
+}
+
+
+</style>
+
+<div class="botones">
+    <button onclick="window.print()">🖨️ Imprimir</button> 
+    <button onclick="history.back()">⬅ Volver</button>
 </div>
 
+<div class="recibo">
+
+    <div class="header">
+
+        <div class="logo">
+            <img src="{{ url_for('static', filename='img/logo_marchando.png') }}">
+        </div>
+
+        <div class="titulo">
+            <div class="pedido-titulo">PEDIDO</div>
+            <div>N° {{ "%04d"|format(pedido.cliente_id) }}</div>
+            <div>{{ pedido.fecha }}</div>
+        </div>
+
+    </div>
+
+    <div class="cliente-box">
+        <strong>DATOS DEL CLIENTE:</strong>
+        <div>{{ pedido.cliente }}</div>
+        <div>{{ pedido.telefono if pedido.telefono else '' }}</div>
+        <div>{{ pedido.direccion if pedido.direccion else '' }}</div>
+    </div>
+
+    <table class="tabla-productos">
+        <thead>
+            <tr>
+                <th>DESCRIPCIÓN</th>
+                <th>CANT.</th>
+                <th>PRECIO</th>
+                <th>TOTAL</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in detalles %}
+            <tr>
+                <td class="descripcion">{{ item.receta }}</td>
+                <td>{{ item.cantidad }}</td>
+                <td>${{ "%.0f"|format(item.precio_cliente) }}</td>
+                <td>${{ "%.0f"|format(item.precio_cliente * item.cantidad) }}</td>
+            </tr>
+            {% endfor %}
+
+            {% for i in range(6) %}
+            <tr>
+                <td>&nbsp;</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            {% endfor %}
+
+            <tr class="total-row">
+                <td colspan="3" style="text-align:right;">TOTAL</td>
+                <td>${{ "%.0f"|format(total_general) }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div style="margin-top:40px;text-align:center;font-size:14px;">
+        <div>📞 11-3461-5914</div>
+        <div>@marchando.frozen</div>
+    </div>
+
+</div>
 <br>
-
-<button onclick="window.print()">🖨️ Imprimir</button>
-<button onclick="copiarTexto()">📋 Copiar</button>
-
-<script>
-function copiarTexto() {
-    const cliente = "{{ pedido.cliente }}";
-    const fecha = "{{ pedido.fecha }}";
-    const detalles = [
-        {% for item in detalles %}
-        {
-            receta: "{{ item.receta }}",
-            precio: "{{ '%.2f'|format(item.precio_cliente) }}",
-            cantidad: "{{ item.cantidad }}"
-        },
-        {% endfor %}
-    ];
-
-    let texto = `Pedido #{{ pedido.id }} - Cliente: ${cliente} - Fecha: ${fecha}\n\n`;
-    texto += "Producto         Precio Unitario   Cantidad\n";
-    detalles.forEach(d => {
-        texto += `${d.receta.padEnd(16)} $${d.precio.padEnd(16)} ${d.cantidad}\n`;
-    });
-    texto += `\nTOTAL: ${{ '%.2f'|format(total_general) }}`;
-
-    navigator.clipboard.writeText(texto)
-        .then(() => alert("Texto copiado al portapapeles"))
-        .catch(err => alert("Error al copiar texto: " + err));
-}
-</script>
-
 {% endblock %}

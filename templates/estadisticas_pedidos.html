@@ -37,18 +37,11 @@
   <button type="submit" class="btn btn-primary">Filtrar</button>
 </form>
 
-<!-- Totales generales -->
-<div class="row mb-4">
-  <div class="col-md-6">
-    <div class="card shadow-sm p-3">
-      <h5>Total de recetas vendidas: <strong>{{ total_recetas }}</strong></h5>
-    </div>
-  </div>
-  <div class="col-md-6">
-    <div class="card shadow-sm p-3">
-      <h5>Total vendido: <strong>${{ '%.2f'|format(total_vendido) }}</strong></h5>
-    </div>
-  </div>
+<!-- Totales generales simplificados -->
+<div class="mb-4" style="font-size: 18px; line-height: 1.6;">
+  <div>Total Compras (Costo Recetas): <strong>${{ '%.2f'|format(total_costo) }}</strong></div>
+  <div>Total Vendido: <strong>${{ '%.2f'|format(total_vendido) }}</strong></div>
+  <div>Ganancia / Neto: <strong>${{ '%.2f'|format(total_vendido - total_costo) }}</strong></div>
 </div>
 
 <!-- Filtros -->
@@ -74,7 +67,16 @@
     <tbody>
       {% for c in clientes %}
       <tr>
-        <td>{{ c.cliente }}</td>
+        <td>
+          <!-- Botón para abrir modal -->
+          <button class="btn btn-link p-0" style="text-decoration: none;"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modalCliente"
+                  data-cliente-id="{{ c.id }}"
+                  data-cliente-nombre="{{ c.cliente }}">
+            {{ c.cliente }}
+          </button>
+        </td>
         <td>{{ c.total_pedidos }}</td>
         <td>${{ '%.2f'|format(c.total_pagado) }}</td>
         <td>{{ '%.1f'|format((c.total_pagado / total_vendido * 100) if total_vendido else 0) }}%</td>
@@ -130,7 +132,32 @@
   </table>
 </div>
 
-<!-- JavaScript para filtros -->
+<!-- Modal para detalle cliente -->
+<div class="modal fade" id="modalCliente" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Detalle de Pedidos de <span id="modalClienteNombre"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <table class="table table-bordered">
+          <thead>
+            <tr>
+              <th>Receta</th>
+              <th>Cantidad</th>
+            </tr>
+          </thead>
+          <tbody id="modalClienteBody">
+            <tr><td colspan="2">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- JavaScript para filtros y modal -->
 <script>
   function filtrar(valor) {
     const secciones = document.querySelectorAll('.filtro-seccion');
@@ -181,6 +208,33 @@
     const inputFecha = document.getElementById('fecha');
     inputFecha.value = '';
     document.getElementById('form-filtros').submit();
+  });
+
+  // Modal de cliente
+  const modalCliente = document.getElementById('modalCliente');
+  modalCliente.addEventListener('show.bs.modal', function (event) {
+    const button = event.relatedTarget;
+    const clienteId = button.getAttribute('data-cliente-id');
+    const clienteNombre = button.getAttribute('data-cliente-nombre');
+
+    document.getElementById('modalClienteNombre').textContent = clienteNombre;
+    const tbody = document.getElementById('modalClienteBody');
+    tbody.innerHTML = '<tr><td colspan="2">Cargando...</td></tr>';
+
+    fetch(`/detalle_cliente/${clienteId}?fecha={{ fecha }}`)
+      .then(response => response.json())
+      .then(data => {
+        tbody.innerHTML = '';
+        if (data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="2">No hay pedidos</td></tr>';
+        } else {
+          data.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${item.receta}</td><td>${item.cantidad}</td>`;
+            tbody.appendChild(tr);
+          });
+        }
+      });
   });
 </script>
 

@@ -19,17 +19,19 @@
 <form method="POST" action="{{ url_for('cambiar_estado_pedido') }}">
   <table class="table table-striped table-bordered">
     <thead class="table-dark">
-      <tr>
-        <th>Cliente</th>
-        <th>Fecha</th>
-        <th>Recetas</th>
-        <th>Estado</th>
-        <th>Eliminar</th>
-      </tr>
-    </thead>
+  <tr>
+    <th>#</th>
+    <th>Cliente</th>
+    <th>Fecha</th>
+    <th>Recetas</th>
+    <th>Estado</th>
+    <th>Eliminar</th>
+  </tr>
+</thead>
     <tbody>
       {% for grupo in pedidos_agrupados %}
         <tr>
+          <td>{{ "%04d"|format(grupo.ordenes_id) }}</td>
           <td>{{ grupo.cliente }}</td>
           <td>{{ grupo.fecha }}</td>
           <td>
@@ -60,7 +62,7 @@
         </tr>
       {% else %}
         <tr>
-          <td colspan="5" class="text-center">No se encontraron pedidos para el cliente buscado.</td>
+          <td colspan="6" class="text-center">No se encontraron pedidos para el cliente buscado.</td>
         </tr>
       {% endfor %}
     </tbody>

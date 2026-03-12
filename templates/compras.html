@@ -2,7 +2,7 @@
 {% block content %}
 <div class="container mt-4">
     <h2 class="mb-4">🛒 Lista de Compras desde Pedidos Pendientes</h2>
-
+    <div id="flash-mensajes"></div>
     <!-- Filtros -->
     <div class="row mb-3">
         <div class="col-md-6 mb-2">
@@ -18,10 +18,13 @@
         <div>
             <button class="btn btn-sm btn-outline-primary" id="marcar_todos">Marcar Todos</button>
             <button class="btn btn-sm btn-outline-secondary" id="desmarcar_todos">Desmarcar Todos</button>
-            <button class="btn btn-sm btn-warning" id="btn_separar_tipo" disabled>Separar por Tipo</button>
+            <button class="btn btn-sm btn-warning" id="btn_separar_tipo" disabled>
+            Separar por Tipo
+            </button>
         </div>
         <div>
-            <button class="btn btn-sm btn-outline-primary" onclick="window.print()">🖨️ Imprimir</button>
+        <button class="btn btn-sm btn-outline-success" onclick="copiarCompras()">📋 Copiar</button>
+        <button class="btn btn-sm btn-outline-primary" onclick="imprimirCompras()">🖨️ Imprimir</button>
         </div>
     </div>
 
@@ -32,7 +35,6 @@
                 <th>Cliente</th>
                 <th>Fecha</th>
                 <th>Recetas (Cantidad)</th>
-                <th>Total Pedido ($)</th>
             </tr>
         </thead>
         <tbody>
@@ -52,10 +54,9 @@
                         {% endfor %}
                     </ul>
                 </td>
-                <td>${{ '%.2f'|format(pedido.total) }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="5" class="text-center">No hay pedidos pendientes</td></tr>
+            <tr><td colspan="4" class="text-center">No hay pedidos pendientes</td></tr>
             {% endfor %}
         </tbody>
     </table>
@@ -70,17 +71,9 @@
                     <th>Tipo</th>
                     <th>Unidad</th>
                     <th>Cantidad Total</th>
-                    <th>Costo Unitario</th>
-                    <th>Costo Total</th>
                 </tr>
             </thead>
             <tbody id="ingredientes_body"></tbody>
-            <tfoot class="table-dark text-white">
-                <tr>
-                    <th colspan="5" class="text-end">TOTAL GENERAL:</th>
-                    <th id="total_general">$0.00</th>
-                </tr>
-            </tfoot>
         </table>
     </div>
 </div>
@@ -88,7 +81,6 @@
 <script>
     const ingredientesContainer = document.getElementById('ingredientes_container');
     const ingredientesBody = document.getElementById('ingredientes_body');
-    const totalGeneralEl = document.getElementById('total_general');
     const btnSepararTipo = document.getElementById('btn_separar_tipo');
 
     let ingredientesData = [];
@@ -106,7 +98,6 @@
     // Renderizar tabla de ingredientes
     function renderIngredientes(data, agruparPorTipo) {
         ingredientesBody.innerHTML = '';
-        let totalGeneral = 0;
 
         if (agruparPorTipo) {
             let grupos = {};
@@ -119,16 +110,15 @@
                 let filaTipo = document.createElement('tr');
                 filaTipo.classList.add('table-primary');
                 let tdTipo = document.createElement('td');
-                tdTipo.colSpan = 6;
+                tdTipo.colSpan = 4;
                 tdTipo.innerHTML = `<strong>${tipo || 'Sin tipo'}</strong>`;
                 filaTipo.appendChild(tdTipo);
                 ingredientesBody.appendChild(filaTipo);
 
                 let subtotalTipo = 0;
-                grupos[tipo].sort((a,b) => a.producto.localeCompare(b.producto)).forEach(ing => {
-                    let total = ing.cantidad_total * ing.costo_unitario;
-                    subtotalTipo += total;
-                    totalGeneral += total;
+                grupos[tipo]
+                .sort((a,b) => a.producto.localeCompare(b.producto,'es',{sensitivity:'base'}))
+                .forEach(ing => {
 
                     let fila = document.createElement('tr');
                     fila.innerHTML = `
@@ -136,26 +126,14 @@
                         <td>${ing.tipo || '-'}</td>
                         <td>${ing.unidad}</td>
                         <td>${ing.cantidad_total.toFixed(2)}</td>
-                        <td>$${ing.costo_unitario.toFixed(2)}</td>
-                        <td>$${total.toFixed(2)}</td>
                     `;
                     ingredientesBody.appendChild(fila);
                 });
-
-                let filaSub = document.createElement('tr');
-                filaSub.classList.add('table-secondary', 'fw-bold');
-                filaSub.innerHTML = `
-                    <td colspan="5" class="text-end">Subtotal ${tipo}:</td>
-                    <td>$${subtotalTipo.toFixed(2)}</td>
-                `;
-                ingredientesBody.appendChild(filaSub);
             });
 
         } else {
             data.sort((a,b) => a.producto.localeCompare(b.producto));
             data.forEach(ing => {
-                let total = ing.cantidad_total * ing.costo_unitario;
-                totalGeneral += total;
 
                 let fila = document.createElement('tr');
                 fila.innerHTML = `
@@ -163,14 +141,11 @@
                     <td>${ing.tipo || '-'}</td>
                     <td>${ing.unidad}</td>
                     <td>${ing.cantidad_total.toFixed(2)}</td>
-                    <td>$${ing.costo_unitario.toFixed(2)}</td>
-                    <td>$${total.toFixed(2)}</td>
                 `;
                 ingredientesBody.appendChild(fila);
             });
         }
 
-        totalGeneralEl.textContent = `$${totalGeneral.toFixed(2)}`;
     }
 
     // Función para pedir ingredientes al backend con lista de pedidos enviada
@@ -188,6 +163,7 @@
                 ingredientesContainer.style.display = 'block';
                 renderIngredientes(ingredientesData, agrupadoPorTipo);
                 btnSepararTipo.disabled = false;
+                btnSepararTipo.textContent = "Separar por Tipo";
             } else {
                 alert('Error al obtener ingredientes');
                 ingredientesContainer.style.display = 'none';
@@ -261,10 +237,19 @@
 
     // Botón Separar por Tipo
     btnSepararTipo.addEventListener('click', () => {
-        if (!ingredientesData.length) return;
-        agrupadoPorTipo = true;
-        renderIngredientes(ingredientesData, agrupadoPorTipo);
-        btnSepararTipo.disabled = true;
+
+    if (!ingredientesData.length) return;
+
+    agrupadoPorTipo = !agrupadoPorTipo;
+
+    renderIngredientes(ingredientesData, agrupadoPorTipo);
+
+    if (agrupadoPorTipo){
+        btnSepararTipo.textContent = "Mezclar Ingredientes";
+    } else {
+        btnSepararTipo.textContent = "Separar por Tipo";
+    }
+
     });
 
     // Función para filtrar tabla
@@ -291,5 +276,101 @@
     document.getElementById('filtro_cliente').addEventListener('input', filtrarTabla);
     document.getElementById('filtro_receta').addEventListener('input', filtrarTabla);
 
+    function mostrarFlash(mensaje, tipo="success"){
+
+    const contenedor = document.getElementById("flash-mensajes");
+
+    const alerta = document.createElement("div");
+
+    alerta.className = `alert alert-${tipo} alert-dismissible fade show`;
+    alerta.role = "alert";
+
+    alerta.innerHTML = `
+        ${mensaje}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+    contenedor.prepend(alerta);
+
+    setTimeout(() => {
+        alerta.remove();
+    }, 2500);
+}
+
+function imprimirCompras(){
+
+    const tabla = document.getElementById("tabla_ingredientes").outerHTML;
+
+    let ventana = window.open("", "", "width=800,height=600");
+
+    ventana.document.write(`
+        <html>
+        <head>
+        <title>Lista de compras</title>
+
+        <style>
+        body{
+            font-family: Arial;
+            padding: 20px;
+        }
+
+        h2{
+            text-align:center;
+            margin-bottom:20px;
+        }
+
+        table{
+            width:100%;
+            border-collapse: collapse;
+        }
+
+        th, td{
+            border:1px solid #000;
+            padding:8px;
+            text-align:left;
+        }
+
+        th{
+            background:#eee;
+        }
+
+        </style>
+        </head>
+
+        <body>
+
+        <h2>Lista de Compras</h2>
+
+        ${tabla}
+
+        </body>
+        </html>
+    `);
+
+    ventana.document.close();
+    ventana.print();
+}
+function copiarCompras(){
+
+    const tabla = document.getElementById("tabla_ingredientes");
+
+    if (!tabla || tabla.rows.length <= 1){
+        mostrarFlash("No hay ingredientes para copiar","warning");
+        return;
+    }
+
+    let rango = document.createRange();
+    rango.selectNode(tabla);
+
+    let seleccion = window.getSelection();
+    seleccion.removeAllRanges();
+    seleccion.addRange(rango);
+
+    document.execCommand("copy");
+
+    seleccion.removeAllRanges();
+
+    mostrarFlash("Lista de compras copiada correctamente","success");
+}
 </script>
 {% endblock %}

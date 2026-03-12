@@ -7,12 +7,13 @@ import io
 import os
 from collections import defaultdict
 import zipfile
+import mysql.connector
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'esta_es_una_clave_secreta_para_desarrollo') # PRUEBAS LOCALES
-ACCESS_CODE = os.environ.get('ACCESS_CODE', '1111')  # o el código que quieras por defecto - # PRUEBAS LOCALES 
-#app.secret_key = os.environ.get('SECRET_KEY')  # ideal no usar valor por defecto en producción
-#ACCESS_CODE = os.environ.get('ACCESS_CODE')  # o el código que quieras por defecto
+#app.secret_key = os.environ.get('SECRET_KEY', 'esta_es_una_clave_secreta_para_desarrollo') # PRUEBAS LOCALES
+#ACCESS_CODE = os.environ.get('ACCESS_CODE', '1111')  # o el código que quieras por defecto - # PRUEBAS LOCALES 
+app.secret_key = os.environ.get('SECRET_KEY')  # ideal no usar valor por defecto en producción
+ACCESS_CODE = os.environ.get('ACCESS_CODE')  # o el código que quieras por defecto
 
 DB_NAME = 'marchando_base.db'
 
@@ -23,7 +24,6 @@ bp_backups = Blueprint('backups', __name__)
 BACKUP_DIR = os.path.join('static', 'backups')
 DB_PATH = os.path.join('marchando_base.db')  # Ajusta si tu DB está en otro lugar
 
-
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -33,6 +33,13 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+@app.route('/backup/download_db')
+def download_db():
+    if os.path.exists(DB_FILE):
+        return send_file(DB_FILE, as_attachment=True)
+    else:
+        return "Base de datos no encontrada", 404
+    
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -84,6 +91,70 @@ def listar_backups():
         reverse=True
     )
     return render_template('backups.html', archivos=archivos)
+
+@bp_backups.route('/backups/subir_base', methods=['POST'])
+@login_required
+def subir_base():
+    """Subir toda la base de datos local SQLite a la base remota MySQL"""
+    # --- Configuración de conexión MySQL remota ---
+    MYSQL_HOST = "ghn5ta.h.filess.io"
+    MYSQL_USER = "marchando_base_printedsit"
+    MYSQL_PASSWORD = "408062eb22d5d09c39b8387032fb3f6cc4ebb6f3"
+    MYSQL_DB = "marchando_base_printedsit"
+
+    # Conexión a SQLite local
+    sqlite_conn = sqlite3.connect(DB_NAME)
+    sqlite_conn.row_factory = sqlite3.Row
+    sqlite_cursor = sqlite_conn.cursor()
+
+    # Conexión a MySQL remota
+    try:
+        mysql_conn = mysql.connector.connect(
+            host=MYSQL_HOST,
+            user=MYSQL_USER,
+            password=MYSQL_PASSWORD,
+            database=MYSQL_DB,
+            charset='utf8mb4'
+        )
+        mysql_cursor = mysql_conn.cursor()
+    except Exception as e:
+        flash(f"Error conectando a la base remota: {e}", "danger")
+        return redirect(url_for('backups.listar_backups'))
+
+    try:
+        # Listar todas las tablas de SQLite
+        sqlite_cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tablas = [t['name'] for t in sqlite_cursor.fetchall()]
+
+        for tabla in tablas:
+            sqlite_cursor.execute(f"SELECT * FROM {tabla}")
+            filas = sqlite_cursor.fetchall()
+            columnas = [desc[0] for desc in sqlite_cursor.description]
+
+            if not filas:
+                continue  # no hay datos, saltar
+
+            # Generar query de INSERT con placeholders
+            placeholders = ','.join(['%s'] * len(columnas))
+            columnas_str = ','.join(columnas)
+            sql_insert = f"INSERT INTO {tabla} ({columnas_str}) VALUES ({placeholders}) " \
+                         f"ON DUPLICATE KEY UPDATE " + ','.join([f"{c}=VALUES({c})" for c in columnas])
+
+            # Ejecutar cada fila
+            for fila in filas:
+                mysql_cursor.execute(sql_insert, tuple(fila))
+
+        mysql_conn.commit()
+        flash("Base de datos subida correctamente a MySQL remota.", "success")
+    except Exception as e:
+        flash(f"Error durante la subida: {e}", "danger")
+    finally:
+        sqlite_cursor.close()
+        sqlite_conn.close()
+        mysql_cursor.close()
+        mysql_conn.close()
+
+    return redirect(url_for('backups.listar_backups'))
 
 @bp_backups.route('/backups/crear', methods=['POST'])
 @login_required
@@ -239,6 +310,96 @@ def guardar_producto():
     flash(mensaje, "success")
     return redirect(url_for('modificar_ingredientes'))
 
+@app.route('/actualizar_precios')
+@login_required
+def actualizar_precios():
+
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT 
+                id,
+                producto,
+                tipo,
+                referencia,
+                cantidad,
+                unidad,
+                costo_total,
+                ultima_actualizacion
+            FROM ingredientes
+            ORDER BY producto
+        """).fetchall()
+
+    ingredientes = []
+
+    for r in rows:
+
+        i = dict(r)
+
+        if i["ultima_actualizacion"]:
+
+            fecha_str = i["ultima_actualizacion"]
+
+            try:
+                fecha = datetime.strptime(fecha_str, "%Y-%m-%d")
+            except ValueError:
+                try:
+                    fecha = datetime.strptime(fecha_str, "%Y-%m-%d %H:%M")
+                except ValueError:
+                    fecha = datetime.strptime(fecha_str, "%d/%m/%Y")
+
+            dias = (datetime.now() - fecha).days
+
+        else:
+            dias = 999
+
+        i["dias_actualizacion"] = dias
+        ingredientes.append(i)
+
+    return render_template(
+        "actualizar_precios.html",
+        ingredientes=ingredientes
+    )
+
+@app.route('/guardar_precios', methods=['POST'])
+@login_required
+def guardar_precios():
+
+    create_backup()
+
+    precios = request.form
+
+    with get_conn() as conn:
+
+        for key, value in precios.items():
+
+            if key.startswith("precio_"):
+
+                ingrediente_id = key.replace("precio_", "")
+                nuevo_precio = float(value)
+
+                actual = conn.execute(
+                    "SELECT costo_total FROM ingredientes WHERE id = ?",
+                    (ingrediente_id,)
+                ).fetchone()
+
+                if actual and float(actual["costo_total"]) != nuevo_precio:
+
+                    conn.execute("""
+                        UPDATE ingredientes
+                        SET costo_total = ?,
+                            ultima_actualizacion = ?
+                        WHERE id = ?
+                    """, (
+                        nuevo_precio,
+                        datetime.now().strftime("%Y-%m-%d"),
+                        ingrediente_id
+                    ))
+
+        conn.commit()
+
+    flash("Precios actualizados correctamente", "success")
+
+    return redirect(url_for("actualizar_precios"))
 
 # --- Editar ingrediente desde pantalla principal ---
 @app.route('/ingredientes/editar/<int:id>', methods=['POST'])
@@ -475,7 +636,7 @@ def nueva_receta():
     if request.method == 'POST':
         create_backup()
         nombre = request.form['nombre']
-        comentario = request.form.get('referencia', '')  # Cambié a comentario porque tu tabla recetas no tiene 'referencia'
+        comentario = request.form.get('referencia', '')
 
         with get_conn() as conn:
             cursor = conn.cursor()
@@ -486,11 +647,14 @@ def nueva_receta():
             receta_id = cursor.lastrowid
             conn.commit()
 
-        # Redirigir directamente a la nueva receta
         return redirect(url_for('modificar_receta', id=receta_id))
 
+    with get_conn() as conn:
+        recetas = [dict(r) for r in conn.execute(
+            "SELECT id, nombre FROM recetas ORDER BY nombre"
+        ).fetchall()]
 
-    return render_template('nueva_receta.html')
+    return render_template('nueva_receta.html', recetas=recetas)
 
 
 @app.route("/receta/<int:receta_id>")
@@ -521,11 +685,9 @@ def ver_receta(receta_id):
                            costo_total=costo_total,
                            precio_cliente=precio_cliente)
 
-# === PRESUPUESTO ===
 @app.route("/presupuesto", methods=["GET", "POST"])
 @login_required
 def presupuesto():
-    
     conn = get_conn()
     if request.method == "POST" and request.is_json:
         create_backup()
@@ -534,7 +696,7 @@ def presupuesto():
         fecha = data.get("fecha")
         recetas = data.get("recetas", [])
 
-        # Insertar cada línea como un pedido pendiente
+        # --- Insertar cada línea como pedido pendiente ---
         for r in recetas:
             cantidad = int(r["cantidad"])
             pu = float(r["precio_unitario"])
@@ -545,11 +707,40 @@ def presupuesto():
                    VALUES (?, ?, ?, ?, ?, ?, 'pendiente')""",
                 (cliente_id, r["receta_id"], fecha, cantidad, pu, pt)
             )
+
+        # --- Calcular total venta ---
+        total_venta = sum(float(r["total"]) for r in recetas)
+
+        # --- Crear string de recetas con nombre ---
+        recetas_str_list = []
+        total_costo = 0
+        for r in recetas:
+            receta = conn.execute("SELECT nombre FROM recetas WHERE id = ?", (r['receta_id'],)).fetchone()
+            nombre_receta = receta['nombre'] if receta else f"Receta {r['receta_id']}"
+            recetas_str_list.append(f"{nombre_receta}x{r['cantidad']}")
+
+            # --- Opcional: calcular costo real según ingredientes ---
+            costo_receta = conn.execute("""
+                SELECT COALESCE(SUM(ri.cantidad * i.costo_unitario),0) AS costo_total
+                FROM receta_ingredientes ri
+                JOIN ingredientes i ON ri.ingrediente_id = i.id
+                WHERE ri.receta_id = ?
+            """, (r['receta_id'],)).fetchone()['costo_total']
+            total_costo += costo_receta * int(r['cantidad'])
+
+        recetas_str = " | ".join(recetas_str_list)
+
+        # --- Insertar en tabla ORDENES ---
+        conn.execute("""
+            INSERT INTO ordenes (cliente_id, total_venta, total_costo, recetas, fecha)
+            VALUES (?, ?, ?, ?, ?)
+        """, (cliente_id, total_venta, total_costo, recetas_str, fecha))
+
         conn.commit()
         conn.close()
-        return jsonify({"status":"ok", "msg":"Presupuesto convertido en pedido correctamente."})
+        return jsonify({"status": "ok", "msg": "Presupuesto convertido en pedido correctamente."})
 
-    # GET: mostrar el formulario
+    # --- GET: mostrar formulario ---
     hoy = datetime.now().strftime("%Y-%m-%d")
     clientes = conn.execute("SELECT id, nombre FROM clientes ORDER BY nombre").fetchall()
     recetas = conn.execute("""
@@ -565,7 +756,6 @@ def presupuesto():
                            clientes=[dict(c) for c in clientes],
                            recetas=[dict(r) for r in recetas])
 
-
 # === PEDIDOS ===
 @app.route('/estadisticas_pedidos', methods=['GET'])
 @login_required
@@ -573,35 +763,51 @@ def estadisticas_pedidos():
     conn = get_conn()
     cur = conn.cursor()
 
-    # Obtenemos el filtro de mes/año
+    # Filtro de mes/año
     fecha = request.args.get('fecha', '').strip()
     filtro_sql = ""
     params = []
 
     if fecha:
-        # fecha viene como "MM/YYYY" desde el input flatpickr
         try:
             mes, anio = fecha.split('/')
-            mes = mes.zfill(2)  # Asegurar 2 dígitos
+            mes = mes.zfill(2)
             filtro_sql = " AND strftime('%m', p.fecha) = ? AND strftime('%Y', p.fecha) = ?"
             params.extend([mes, anio])
         except ValueError:
-            fecha = ""  # Si falla el split, no filtramos
+            fecha = ""
 
-    # Filtro base: solo pedidos finalizados
+    # Traemos todos los pedidos finalizados con filtro
     pedidos = cur.execute(
         f"SELECT * FROM pedidos p WHERE p.estado = 'finalizado' {filtro_sql}",
         params
     ).fetchall()
 
-    # Datos generales
+    # Totales generales
     total_recetas = sum([p['cantidad'] for p in pedidos]) if pedidos else 0
     total_vendido = sum([p['precio_total'] for p in pedidos]) if pedidos else 0
 
+    # Total de compras (costo real calculado por ingredientes usados)
+    ingredientes = cur.execute(f"""
+        SELECT i.id,
+               i.producto AS ingrediente,
+               i.unidad AS unidad,
+               i.costo_unitario AS costo_unitario,
+               SUM(ri.cantidad * p.cantidad) AS total_usado
+        FROM pedidos p
+        JOIN receta_ingredientes ri ON p.receta_id = ri.receta_id
+        JOIN ingredientes i ON ri.ingrediente_id = i.id
+        WHERE p.estado = 'finalizado' {filtro_sql}
+        GROUP BY i.id
+    """, params).fetchall()
+
+    total_costo = sum([f['total_usado'] * f['costo_unitario'] for f in ingredientes]) if ingredientes else 0
+
     # Por cliente
     clientes = cur.execute(f"""
-        SELECT c.nombre AS cliente, 
-               COUNT(p.id) AS total_pedidos, 
+        SELECT c.id,
+               c.nombre AS cliente,
+               COUNT(p.id) AS total_pedidos,
                SUM(p.precio_total) AS total_pagado
         FROM pedidos p
         JOIN clientes c ON p.cliente_id = c.id
@@ -612,7 +818,8 @@ def estadisticas_pedidos():
 
     # Por receta
     recetas = cur.execute(f"""
-        SELECT r.nombre AS receta, 
+        SELECT r.id,
+               r.nombre AS receta,
                SUM(p.cantidad) AS total_vendida
         FROM pedidos p
         JOIN recetas r ON p.receta_id = r.id
@@ -621,29 +828,55 @@ def estadisticas_pedidos():
         ORDER BY total_vendida DESC
     """, params).fetchall()
 
-    # Por ingrediente
-    ingredientes = cur.execute(f"""
-        SELECT i.producto AS ingrediente,
-               i.unidad AS unidad,
-               SUM(ri.cantidad * p.cantidad) AS total_usado
-        FROM pedidos p
-        JOIN receta_ingredientes ri ON p.receta_id = ri.receta_id
-        JOIN ingredientes i ON ri.ingrediente_id = i.id
-        WHERE p.estado = 'finalizado' {filtro_sql}
-        GROUP BY i.id
-        ORDER BY total_usado DESC
-    """, params).fetchall()
-
     conn.close()
 
+    # Renderizamos la vista
     return render_template('estadisticas_pedidos.html',
                            total_recetas=total_recetas,
                            total_vendido=total_vendido,
+                           total_costo=total_costo,
+                           ganancia=total_vendido - total_costo,
                            clientes=clientes,
                            recetas=recetas,
                            ingredientes=ingredientes,
                            fecha=fecha)
 
+@app.route('/detalle_cliente/<int:cliente_id>', methods=['GET'])
+@login_required
+def detalle_cliente(cliente_id):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    # Filtro opcional por mes/año
+    fecha = request.args.get('fecha', '').strip()
+    filtro_sql = ""
+    params = [cliente_id]
+
+    if fecha:
+        try:
+            mes, anio = fecha.split('/')
+            mes = mes.zfill(2)
+            filtro_sql = " AND strftime('%m', p.fecha) = ? AND strftime('%Y', p.fecha) = ?"
+            params.extend([mes, anio])
+        except ValueError:
+            pass
+
+    # Cantidad total por receta para el cliente
+    pedidos_cliente = cur.execute(f"""
+        SELECT r.nombre AS receta,
+               SUM(p.cantidad) AS cantidad
+        FROM pedidos p
+        JOIN recetas r ON p.receta_id = r.id
+        WHERE p.cliente_id = ? AND p.estado = 'finalizado' {filtro_sql}
+        GROUP BY r.id
+        ORDER BY cantidad DESC
+    """, params).fetchall()
+
+    conn.close()
+
+    resultado = [{'receta': row['receta'], 'cantidad': row['cantidad']} for row in pedidos_cliente]
+
+    return jsonify(resultado)
 
 @app.route('/cambiar_estado_pedido', methods=['GET'])
 @login_required
@@ -652,17 +885,19 @@ def cambiar_estado_pedido_form():
     conn = get_conn()
     c = conn.cursor()
 
+    # Traemos pedidos junto con el id de orden correspondiente
     query = '''
-        SELECT p.id, p.cliente_id, c.nombre AS cliente, 
-               p.receta_id, r.nombre AS receta, 
+        SELECT p.id, o.id AS ordenes_id, p.cliente_id, c.nombre AS cliente,
+               p.receta_id, r.nombre AS receta,
                p.fecha, p.estado, p.cantidad
         FROM pedidos p
         JOIN clientes c ON p.cliente_id = c.id
         JOIN recetas r ON p.receta_id = r.id
+        JOIN ordenes o ON o.cliente_id = p.cliente_id AND o.fecha = p.fecha
         WHERE 1=1
     '''
-
     params = []
+
     if cliente_buscar:
         query += " AND c.nombre LIKE ?"
         params.append(f'%{cliente_buscar}%')
@@ -673,7 +908,7 @@ def cambiar_estado_pedido_form():
     pedidos = c.fetchall()
     conn.close()
 
-    # Agrupar pedidos por cliente y fecha
+    # Agrupar pedidos por cliente y fecha, incluyendo ordenes_id
     pedidos_agrupados = {}
     for p in pedidos:
         clave = (p['cliente_id'], p['fecha'])
@@ -682,13 +917,18 @@ def cambiar_estado_pedido_form():
                 'cliente_id': p['cliente_id'],
                 'cliente': p['cliente'],
                 'fecha': p['fecha'],
+                'ordenes_id': p['ordenes_id'],  # <-- agregamos aquí
                 'pedidos': [],
             }
         pedidos_agrupados[clave]['pedidos'].append(p)
 
     pedidos_agrupados = list(pedidos_agrupados.values())
 
-    return render_template('cambiar_estado_pedido.html', pedidos_agrupados=pedidos_agrupados, cliente_buscar=cliente_buscar)
+    return render_template(
+        'cambiar_estado_pedido.html',
+        pedidos_agrupados=pedidos_agrupados,
+        cliente_buscar=cliente_buscar
+    )
 
 @app.route('/cambiar_estado_pedido', methods=['POST'])
 @login_required
@@ -698,8 +938,12 @@ def cambiar_estado_pedido():
     conn = get_conn()
     cur = conn.cursor()
 
-    # Obtener todos los grupos cliente_id + fecha (para iterar)
-    cur.execute('SELECT DISTINCT cliente_id, fecha FROM pedidos')
+    # Obtener todos los grupos cliente_id + fecha + ordenes_id
+    cur.execute('''
+        SELECT DISTINCT p.cliente_id, p.fecha, o.id AS ordenes_id
+        FROM pedidos p
+        JOIN ordenes o ON o.cliente_id = p.cliente_id AND o.fecha = p.fecha
+    ''')
     grupos = cur.fetchall()
 
     if accion == 'guardar':
@@ -721,16 +965,23 @@ def cambiar_estado_pedido():
         for grupo in grupos:
             cliente_id = grupo['cliente_id']
             fecha = grupo['fecha']
+            ordenes_id = grupo['ordenes_id']
             campo_eliminar = f'eliminar_{cliente_id}_{fecha}'
             if request.form.get(campo_eliminar) == 'on':
+                # Eliminar pedidos
                 cur.execute(
                     'DELETE FROM pedidos WHERE cliente_id = ? AND fecha = ?',
                     (cliente_id, fecha)
                 )
+                # Eliminar orden correspondiente
+                cur.execute(
+                    'DELETE FROM ordenes WHERE id = ?',
+                    (ordenes_id,)
+                )
                 eliminados += 1
         conn.commit()
         if eliminados:
-            flash(f'Se eliminaron {eliminados} grupo(s) de pedidos.')
+            flash(f'Se eliminaron {eliminados} grupo(s) de pedidos y órdenes.')
         else:
             flash('No se seleccionaron grupos para eliminar.')
 
@@ -756,18 +1007,24 @@ def pedidos():
     cliente = request.args.get('cliente', '').strip()
     fecha = request.args.get('fecha', '').strip()  # Ahora será MM/YYYY
     estado = request.args.get('estado', '').strip()
-
+    
     conn = get_conn()
     c = conn.cursor()
 
+    # --- CONSULTA PRINCIPAL --- #
+    # Traemos pedidos agrupados por la tabla ordenes para obtener el número de pedido y totales
     query = '''
-        SELECT p.id, p.fecha, p.estado, p.cliente_id,
+        SELECT o.id AS ordenes_id,
+               o.cliente_id,
                c.nombre AS cliente_nombre,
-               r.nombre AS nombre_receta,
-               p.cantidad, p.precio_unitario
-        FROM pedidos p
-        JOIN clientes c ON p.cliente_id = c.id
-        JOIN recetas r ON p.receta_id = r.id
+               o.fecha,
+               o.total_venta AS total,
+               o.total_costo,
+               o.recetas,
+               MAX(p.estado) AS estado
+        FROM ordenes o
+        JOIN clientes c ON o.cliente_id = c.id
+        JOIN pedidos p ON p.cliente_id = o.cliente_id AND p.fecha = o.fecha
         WHERE 1=1
     '''
     params = []
@@ -776,46 +1033,49 @@ def pedidos():
         query += ' AND LOWER(c.nombre) LIKE ?'
         params.append(f'%{cliente.lower()}%')
 
-    # --- FILTRO POR MES/AÑO ---
+    # --- FILTRO POR MES/AÑO --- #
     if fecha:
         try:
             mes, anio = fecha.split('/')
-            query += " AND strftime('%m', p.fecha) = ? AND strftime('%Y', p.fecha) = ?"
+            query += " AND strftime('%m', o.fecha) = ? AND strftime('%Y', o.fecha) = ?"
             params.extend([mes.zfill(2), anio])
         except ValueError:
             pass  # Si el formato es incorrecto, no aplicamos filtro
 
-    if estado:
+    # --- FILTRO POR ESTADO --- #
+    if estado and estado != 'todos':
         query += ' AND p.estado = ?'
         params.append(estado)
 
-    query += ' ORDER BY p.fecha DESC'
+    query += ' GROUP BY o.id ORDER BY o.fecha DESC'
 
     c.execute(query, params)
-    pedidos = c.fetchall()
+    filas = c.fetchall()
 
-    # Agrupar pedidos por cliente_id y fecha
-    pedidos_agrupados = {}
-    for p in pedidos:
-        clave = (p['cliente_id'], p['fecha'])
-        if clave not in pedidos_agrupados:
-            pedidos_agrupados[clave] = {
-                'cliente_id': p['cliente_id'],
-                'cliente_nombre': p['cliente_nombre'],
-                'fecha': p['fecha'],
-                'estado': p['estado'],
-                'pedidos': [],
-                'total': 0
-            }
+    # --- ARMAR AGRUPAMIENTO PARA EL HTML --- #
+    pedidos_agrupados = []
+    for fila in filas:
+        # Traemos los pedidos individuales de cada orden para mostrar en el acordeón
+        c.execute('''
+            SELECT p.id, r.nombre AS nombre_receta, p.cantidad, p.precio_unitario, p.estado
+            FROM pedidos p
+            JOIN recetas r ON p.receta_id = r.id
+            WHERE p.cliente_id = ? AND p.fecha = ?
+            ORDER BY r.nombre
+        ''', (fila['cliente_id'], fila['fecha']))
+        pedidos = c.fetchall()
 
-        pedidos_agrupados[clave]['pedidos'].append(p)
-        costo = p['precio_unitario'] or 0
-        cantidad = p['cantidad'] or 0
-        pedidos_agrupados[clave]['total'] += costo * cantidad
+        pedidos_agrupados.append({
+            'ordenes_id': fila['ordenes_id'],       # <-- número de pedido desde ordenes
+            'cliente_id': fila['cliente_id'],
+            'cliente_nombre': fila['cliente_nombre'],
+            'fecha': fila['fecha'],
+            'total': fila['total'],
+            'estado': fila['estado'],
+            'pedidos': pedidos
+        })
 
-    pedidos_agrupados = list(pedidos_agrupados.values())
-
-    # Lista de clientes
+    # --- LISTA DE CLIENTES --- #
     c.execute('SELECT id, nombre FROM clientes ORDER BY nombre')
     clientes = c.fetchall()
 
@@ -829,33 +1089,59 @@ def pedidos():
 @app.route('/imprimir_pedido/<int:cliente_id>/<fecha>/<estado>')
 @login_required
 def imprimir_pedido(cliente_id, fecha, estado):
-
     conn = get_conn()
-    pedido = conn.execute('''
-        SELECT cliente_id, fecha, estado FROM pedidos
-        WHERE cliente_id = ? AND fecha = ? AND estado = ?
-        LIMIT 1
-    ''', (cliente_id, fecha, estado)).fetchone()
 
+    # --- TRAER DATOS DE LA ORDEN --- #
+    pedido = conn.execute('''
+        SELECT 
+            c.nombre AS cliente,
+            c.contacto,
+            c.direccion,
+            o.id AS orden_id,
+            o.cliente_id,
+            o.fecha,
+            MAX(p.estado) AS estado,
+            o.total_venta AS total,
+            o.total_costo,
+            o.recetas
+        FROM ordenes o
+        JOIN clientes c ON o.cliente_id = c.id
+        JOIN pedidos p ON p.cliente_id = o.cliente_id AND p.fecha = o.fecha
+        WHERE o.cliente_id = ? AND o.fecha = ?
+        LIMIT 1
+    ''', (cliente_id, fecha)).fetchone()
+
+    # --- DETALLES INDIVIDUALES DE RECETAS --- #
     detalles = conn.execute('''
-        SELECT r.nombre AS receta, p.cantidad,
-            (SELECT precio_cliente FROM lista_precios WHERE receta_id = r.id) AS precio_cliente
+        SELECT 
+            r.nombre AS receta,
+            p.cantidad,
+            (SELECT precio_cliente 
+             FROM lista_precios 
+             WHERE receta_id = r.id) AS precio_cliente
         FROM pedidos p
         JOIN recetas r ON p.receta_id = r.id
-        WHERE p.cliente_id = ? AND p.fecha = ? AND p.estado = ?
-    ''', (cliente_id, fecha, estado)).fetchall()
+        WHERE p.cliente_id = ? 
+        AND p.fecha = ?
+    ''', (cliente_id, fecha)).fetchall()
 
-    total = sum([d["precio_cliente"] * d["cantidad"] for d in detalles])
+    total = sum([
+        d["precio_cliente"] * d["cantidad"] 
+        for d in detalles
+    ])
+
     conn.close()
 
     if not pedido:
         flash('Pedido no encontrado.', 'danger')
         return redirect(url_for('pedidos'))
 
-    return render_template('imprimir_pedido.html',
-                           pedido=pedido,
-                           detalles=detalles,
-                           total_general=total)
+    return render_template(
+        'imprimir_pedido.html',
+        pedido=pedido,
+        detalles=detalles,
+        total_general=total
+    )
 
 @app.route('/lista_precios', methods=['GET', 'POST'])
 @login_required
@@ -915,10 +1201,12 @@ def lista_precios():
 @app.route('/editar_pedido/<int:cliente_id>/<fecha>/<estado>', methods=['GET', 'POST'])
 @login_required
 def editar_pedido(cliente_id, fecha, estado):
-    
+
     with get_conn() as conn:
         if request.method == 'POST':
             create_backup()
+
+            # --- Obtener datos del POST ---
             if request.is_json:
                 data = request.get_json()
                 cliente_id_new = int(data['cliente_id'])
@@ -942,19 +1230,49 @@ def editar_pedido(cliente_id, fecha, estado):
                         'total': float(totales[i])
                     })
 
+            # --- Borrar líneas existentes del pedido ---
             conn.execute('DELETE FROM pedidos WHERE cliente_id = ? AND fecha = ? AND estado = ?',
                          (cliente_id, fecha, estado))
 
+            # --- Insertar nuevas líneas de pedido ---
             for r in recetas_pedido:
                 conn.execute('''
                     INSERT INTO pedidos (cliente_id, receta_id, fecha, cantidad, precio_unitario, precio_total, estado)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (cliente_id_new, r['receta_id'], fecha_new, r['cantidad'], r['precio_unitario'], r['total'], estado_new))
+
+            # --- Actualizar tabla ORDENES ---
+            total_venta = sum(r['total'] for r in recetas_pedido)
+            total_costo = 0
+            recetas_str = []
+
+            for r in recetas_pedido:
+                # costo dinámico según ingredientes
+                costo_receta = conn.execute("""
+                    SELECT COALESCE(SUM(ri.cantidad * i.costo_unitario),0) AS costo_total
+                    FROM receta_ingredientes ri
+                    JOIN ingredientes i ON ri.ingrediente_id = i.id
+                    WHERE ri.receta_id = ?
+                """, (r['receta_id'],)).fetchone()['costo_total']
+                total_costo += costo_receta * r['cantidad']
+
+                receta = conn.execute("SELECT nombre FROM recetas WHERE id = ?", (r['receta_id'],)).fetchone()
+                nombre_receta = receta['nombre'] if receta else f"Receta {r['receta_id']}"
+                recetas_str.append(f"{nombre_receta}x{r['cantidad']}")
+
+            # La orden siempre existe → actualizamos por cliente_id y fecha
+            conn.execute("""
+                UPDATE ordenes
+                SET total_venta = ?, total_costo = ?, recetas = ?
+                WHERE cliente_id = ? AND fecha = ?
+            """, (total_venta, total_costo, " | ".join(recetas_str), cliente_id, fecha))
+
             conn.commit()
 
             flash('Pedido actualizado correctamente', 'success')
             return jsonify({'status': 'ok', 'msg': 'Pedido actualizado correctamente'})
 
+        # --- GET: cargar formulario ---
         filas = conn.execute('''
             SELECT p.*, r.nombre as receta_nombre
             FROM pedidos p
@@ -988,18 +1306,40 @@ def editar_pedido(cliente_id, fecha, estado):
                            recetas=recetas,
                            total_global=total_global)
 
-@app.route('/eliminar_pedido/<int:id>')
+@app.route('/eliminar_pedido/<int:cliente_id>/<fecha>')
 @login_required
-def eliminar_pedido(id):
+def eliminar_pedido(cliente_id, fecha):
     create_backup()
     with get_conn() as conn:
-        pedido = conn.execute('SELECT id FROM pedidos WHERE id = ?', (id,)).fetchone()
-        if pedido:
-            conn.execute('DELETE FROM pedidos WHERE id = ?', (id,))
-            conn.commit()
-            flash('Pedido eliminado correctamente.', 'success')
-        else:
-            flash('Pedido no encontrado.', 'warning')
+        # --- Guardar los datos de referencia antes de borrar ---
+        pedidos_a_borrar = conn.execute(
+            'SELECT id, cliente_id, fecha FROM pedidos WHERE cliente_id = ? AND fecha = ?',
+            (cliente_id, fecha)
+        ).fetchall()
+
+        if not pedidos_a_borrar:
+            flash('No se encontraron pedidos para eliminar.', 'warning')
+            return redirect(url_for('pedidos'))
+
+        # Tomar cliente_id y fecha del primer registro (constantes para la orden)
+        cliente_ref = pedidos_a_borrar[0]['cliente_id']
+        fecha_ref = pedidos_a_borrar[0]['fecha']
+
+        # --- Borrar todos los pedidos del cliente y fecha ---
+        conn.execute(
+            'DELETE FROM pedidos WHERE cliente_id = ? AND fecha = ?',
+            (cliente_id, fecha)
+        )
+
+        # --- Borrar la orden asociada ---
+        conn.execute(
+            'DELETE FROM ordenes WHERE cliente_id = ? AND fecha = ?',
+            (cliente_ref, fecha_ref)
+        )
+
+        conn.commit()
+        flash('Pedidos y orden asociados eliminados correctamente.', 'success')
+
     return redirect(url_for('pedidos'))
 
 @app.route('/marcar_finalizado/<int:id>')
@@ -1174,6 +1514,79 @@ def actualizar_receta(id):
         conn.commit()
 
     return redirect(url_for('ver_recetas'))
+
+@app.route('/duplicar_receta/<int:receta_id>')
+@login_required
+def duplicar_receta(receta_id):
+    create_backup()
+    conn = get_conn()
+    cur = conn.cursor()
+
+    # Obtener receta original
+    receta = cur.execute(
+        "SELECT nombre, referencia FROM recetas WHERE id = ?",
+        (receta_id,)
+    ).fetchone()
+
+    if not receta:
+        conn.close()
+        return redirect(url_for('ver_recetas'))
+
+    # Crear nueva receta duplicada
+    nuevo_nombre = receta['nombre'] + " copia"
+
+    cur.execute(
+        "INSERT INTO recetas (nombre, referencia) VALUES (?, ?)",
+        (nuevo_nombre, receta['referencia'])
+    )
+
+    nueva_receta_id = cur.lastrowid
+
+    # Copiar ingredientes completos
+    ingredientes = cur.execute("""
+        SELECT ingrediente_id, tipo, cantidad, unidad, costo_unitario, costo_total
+        FROM receta_ingredientes
+        WHERE receta_id = ?
+    """, (receta_id,)).fetchall()
+
+    for ing in ingredientes:
+        cur.execute("""
+            INSERT INTO receta_ingredientes (
+                receta_id,
+                ingrediente_id,
+                tipo,
+                cantidad,
+                unidad,
+                costo_unitario,
+                costo_total
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        nueva_receta_id,
+        ing['ingrediente_id'],
+        ing['tipo'],
+        ing['cantidad'],
+        ing['unidad'],
+        ing['costo_unitario'],
+        ing['costo_total']
+    ))
+
+    # Copiar precio si existe
+    precio = cur.execute("""
+        SELECT precio_cliente FROM lista_precios
+        WHERE receta_id = ?
+    """, (receta_id,)).fetchone()
+
+    if precio:
+        cur.execute("""
+            INSERT INTO lista_precios (receta_id, precio_cliente)
+            VALUES (?, ?)
+        """, (nueva_receta_id, precio['precio_cliente']))
+
+    conn.commit()
+    conn.close()
+
+    return redirect(url_for('modificar_receta', id=nueva_receta_id))
 
 # Agregar ingrediente a receta
 @app.route('/agregar_ingrediente_receta/<int:receta_id>', methods=['POST'])

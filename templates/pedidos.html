@@ -9,20 +9,25 @@
 <br>
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h2 class="mb-0">Pedidos</h2>
-  <a href="{{ url_for('cambiar_estado_pedido') }}" class="btn btn-primary">Modificar estado de pedidos</a>
+  <div>
+    <button class="btn btn-warning me-2" onclick="mostrarResumen()">Resumen recetas pendientes</button>
+    <a href="{{ url_for('cambiar_estado_pedido') }}" class="btn btn-primary">Modificar estado de pedidos</a>
+  </div>
+</div>
+
+<div class="mb-3">
+  <button class="btn btn-outline-primary btn-sm" onclick="expandirTodos()">Expandir todos</button>
+  <button class="btn btn-outline-secondary btn-sm" onclick="contraerTodos()">Contraer todos</button>
 </div>
 
 <!-- FILTROS -->
 <form method="get" id="form-filtros" class="mb-3 d-flex justify-content-between align-items-end flex-wrap">
-
-  <!-- IZQUIERDA: cliente + fecha -->
   <div class="d-flex gap-2 align-items-center" style="max-width: 450px; flex-grow: 0;">
     <input id="searchClientes" name="cliente" type="search"
            class="form-control filtro-activo-si"
            placeholder="Buscar cliente..."
            value="{{ request.args.get('cliente', '') }}"
            style="min-width: 200px; max-width: 250px;">
-
     <div style="position: relative; width: 140px;">
       <input id="fecha" name="fecha" type="text"
              class="form-control filtro-fecha {{ 'filtro-activo' if request.args.get('fecha') else '' }}"
@@ -42,151 +47,305 @@
         font-size: 18px;
         line-height: 1;
         padding: 0;
-        user-select: none;
-      ">&times;</button>
+        user-select: none;">&times;</button>
     </div>
   </div>
 
-  <!-- DERECHA: estado -->
   <div style="min-width: 150px; flex-grow: 0;">
     <label for="estado" class="form-label">Estado:</label>
     <select name="estado" id="estado" class="form-select filtro-activo-si" style="min-width: 150px;">
-      <option value="" {% if not request.args.get('estado') %}selected{% endif %}>Todos</option>
-      <option value="pendiente" {% if request.args.get('estado') == 'pendiente' %}selected{% endif %}>Pendiente</option>
-      <option value="finalizado" {% if request.args.get('estado') == 'finalizado' %}selected{% endif %}>Finalizado</option>
-    </select>
+  <option value="todos" {% if request.args.get('estado') == 'todos' %}selected{% endif %}>Todos</option>
+  <option value="pendiente" {% if not request.args.get('estado') %}selected{% endif %}>Pendiente</option>
+  <option value="finalizado" {% if request.args.get('estado') == 'finalizado' %}selected{% endif %}>Finalizado</option>
+</select>
   </div>
 </form>
 
+<!-- ESTILOS UNIFICADOS -->
+<style>
+.accordion-header.active {
+    background-color: #0d6efd;
+    color: white;
+    font-weight: bold;
+    font-size: 18px;
+    border-left: 8px solid #0d6efd;
+    border-right: 8px solid #0d6efd;
+    border-radius: 5px 5px 0 0;
+}
+.accordion-collapse.show td[colspan="4"] {
+    background-color: #e6f0ff;
+}
+.accordion-collapse td[colspan="4"] {
+    background-color: #ffffff !important;
+}
+.accordion-collapse td[colspan="4"] tr:hover {
+    background-color: #ffffff !important;
+}
+.table-recetas {
+    margin-bottom: 0;
+        border-left: 6px solid #0d6efd;
+    border-right: 6px solid #0d6efd;
+    border-radius: 5px 5px 0 0;
+}
+  
+.table-recetas td.text-center {
+    text-align: center;
+}
+.accordion-collapse .btn {
+    min-width: 70px;
+}
+.accordion-header {
+    cursor: pointer;
+  }
+</style>
+
 <!-- TABLA DE PEDIDOS -->
-<table class="table table-bordered table-hover align-middle text-center">
+<table class="table table-hover">
   <thead class="table-dark">
-    <tr>
-      <th>Cliente</th>
-      <th>Fecha</th>
-      <th>Recetas</th>
-      <th>Total</th>
-      <th>Acciones</th>
-    </tr>
-  </thead>
-  <tbody>
+  <tr>
+    <th>Cliente</th>
+    <th>Fecha</th>
+    <th>Total</th>
+    <th>Estado</th>
+    <th>#</th>
+  </tr>
+</thead>
+  <tbody id="accordionPedidos">
     {% for grupo in pedidos_agrupados %}
-      <tr>
-        <td>{{ grupo.cliente_nombre }}</td>
-        <td>{{ grupo.fecha }}</td>
-        <td>
-          <ul class="list-unstyled mb-0">
-            {% for pedido in grupo.pedidos %}
-              <li>{{ pedido.nombre_receta }} ({{ pedido.cantidad }})</li>
-            {% endfor %}
-          </ul>
-        </td>
-        <td>${{ '%.2f' % grupo.total }}</td>
-        <td class="text-center">
-          {% if grupo.estado == 'pendiente' %}
-            <a href="{{ url_for('editar_pedido', cliente_id=grupo.cliente_id, fecha=grupo.fecha, estado=grupo.estado) }}" class="btn btn-primary btn-sm">Editar</a>
-            <a href="{{ url_for('imprimir_pedido', cliente_id=grupo.cliente_id, fecha=grupo.fecha, estado=grupo.estado) }}" class="btn btn-info btn-sm">Detalle</a>
-            <a href="{{ url_for('marcar_finalizado', id=grupo.pedidos[0].id) }}" class="btn btn-success btn-md mt-1">Finalizar</a>
-          {% else %}
-            <span class="badge bg-secondary fs-8 mt-1">Finalizado</span>
-          {% endif %}
+      <tr class="accordion-header" data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}">
+  <td>{{ grupo.cliente_nombre }}</td>
+  <td>{{ grupo.fecha }}</td>
+  <td>${{ '%.2f' % grupo.total }}</td>
+  <td>{{ grupo.estado|capitalize }}</td>
+  <td>{{ "%04d"|format(grupo.ordenes_id) }}</td>
+</tr>
+      <tr class="accordion-collapse collapse" id="collapse{{ loop.index }}" data-bs-parent="#accordionPedidos">
+        <td colspan="5" class="p-3">
+          <table class="table table-sm table-bordered table-recetas">
+            <thead class="table-light">
+              <tr>
+                <th>Receta</th>
+                <th class="text-center">Cantidad</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pedido in grupo.pedidos %}
+                <tr>
+                  <td>{{ pedido.nombre_receta }}</td>
+                  <td class="text-center">{{ pedido.cantidad }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          <div class="mt-2">
+            {% if grupo.estado == 'pendiente' %}
+              <a href="{{ url_for('editar_pedido', cliente_id=grupo.cliente_id, fecha=grupo.fecha, estado=grupo.estado) }}" class="btn btn-primary btn-sm me-1 mb-1">Editar</a>
+              <a href="{{ url_for('imprimir_pedido', cliente_id=grupo.cliente_id, fecha=grupo.fecha, estado=grupo.estado) }}" class="btn btn-info btn-sm me-1 mb-1">Detalle</a>
+              <a href="{{ url_for('marcar_finalizado', id=grupo.pedidos[0].id) }}" class="btn btn-success btn-sm mb-1">Finalizar</a>
+            {% else %}
+              <span class="badge bg-secondary">Finalizado</span>
+            {% endif %}
+          </div>
         </td>
       </tr>
     {% endfor %}
   </tbody>
 </table>
 
-<style>
-.filtro-fecha.filtro-activo {
-    background-color: #007bff;
-    color: white;
-    font-weight: bold;
-}
-.filtro-fecha.filtro-activo::placeholder {
-    color: white;
-}
-.filtro-fecha.filtro-activo,
-.filtro-activo-si:not(:placeholder-shown):not([value=""]),
-.filtro-activo-si option[value]:checked:not([value=""]) {
-  background-color: #007bff !important;
-  color: white !important;
-  font-weight: bold;
-}
+<!-- MODAL RESUMEN RECETAS -->
+<div class="modal fade" id="modalResumen" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Recetas totales pendientes</h5>
+        <div>
+          <button class="btn btn-success" onclick="copiarRecetas()">Copiar</button>
+          <button class="btn btn-primary" onclick="imprimirResumen()">Imprimir</button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <table class="table table-striped text-center" id="tabla_recetas_totales">
+          <thead class="table-dark">
+            <tr>
+              <th>Receta</th>
+              <th>Cantidad</th>
+            </tr>
+          </thead>
+          <tbody id="tablaResumen"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
 
-.filtro-fecha.filtro-activo::placeholder {
-  color: white !important;
-}
-</style>
-
+<!-- SCRIPTS -->
 <script>
+// ==============================
+// FILA PRINCIPAL EXPANDIBLE + RESALTE
+// ==============================
+document.querySelectorAll('tr.accordion-header').forEach(row => {
+    row.addEventListener('click', () => {
+        const collapseEl = document.querySelector(row.getAttribute('data-bs-target'));
+        const bsCollapse = bootstrap.Collapse.getOrCreateInstance(collapseEl);
+        bsCollapse.toggle(); // deja que eventos shown/hidden manejen active
+    });
+});
 
+// Sincronizar active con eventos de Bootstrap
+document.querySelectorAll('.accordion-collapse').forEach(collapseEl => {
+    collapseEl.addEventListener('shown.bs.collapse', () => {
+        const row = document.querySelector(`tr[data-bs-target="#${collapseEl.id}"]`);
+        if(row) row.classList.add('active');
+    });
+    collapseEl.addEventListener('hidden.bs.collapse', () => {
+        const row = document.querySelector(`tr[data-bs-target="#${collapseEl.id}"]`);
+        if(row) row.classList.remove('active');
+    });
+});
 
+// ==============================
+// EXPANDIR / CONTRAER TODOS
+// ==============================
+function expandirTodos() {
+  document.querySelectorAll('#accordionPedidos .collapse').forEach(c => {
+    bootstrap.Collapse.getOrCreateInstance(c).show();
+  });
+}
+function contraerTodos() {
+  document.querySelectorAll('#accordionPedidos .collapse').forEach(c => {
+    bootstrap.Collapse.getOrCreateInstance(c).hide();
+  });
+}
+
+// ==============================
+// ACTUALIZAR CLASES DE FILTROS
+// ==============================
 function actualizarClasesFiltro() {
   const cliente = document.getElementById('searchClientes');
   const estado = document.getElementById('estado');
+  const fecha = document.getElementById('fecha');
 
-  if (cliente.value.trim() !== '') {
-    cliente.classList.add('filtro-activo-si');
-  } else {
-    cliente.classList.remove('filtro-activo-si');
-  }
-
-  if (estado.value !== '') {
-    estado.classList.add('filtro-activo-si');
-  } else {
-    estado.classList.remove('filtro-activo-si');
-  }
+  cliente.value.trim() !== '' ? cliente.classList.add('filtro-activo-si') : cliente.classList.remove('filtro-activo-si');
+  estado.value !== '' ? estado.classList.add('filtro-activo-si') : estado.classList.remove('filtro-activo-si');
+  fecha.value !== '' ? fecha.classList.add('filtro-activo') : fecha.classList.remove('filtro-activo');
 }
 
-document.getElementById('searchClientes').addEventListener('input', () => {
-  actualizarClasesFiltro();
-  document.getElementById('form-filtros').submit();
-});
-document.getElementById('fecha').addEventListener('change', () => {
-  document.getElementById('form-filtros').submit();
-});
-document.getElementById('estado').addEventListener('change', () => {
-  actualizarClasesFiltro();
-  document.getElementById('form-filtros').submit();
-});
+// ==============================
+// FILTRO EN VIVO
+// ==============================
+function filtrarPedidos() {
+    const filtroCliente = document.getElementById('searchClientes').value.toLowerCase();
+    const filtroFecha = document.getElementById('fecha').value;
+    const filtroEstado = document.getElementById('estado').value.toLowerCase();
 
-window.addEventListener('load', actualizarClasesFiltro);
+    document.querySelectorAll('#accordionPedidos .accordion-header').forEach(row => {
+        const cliente = row.children[0].innerText.toLowerCase();
+        const fecha = row.children[1].innerText;
+        const estado = row.children[3].innerText.toLowerCase();
 
-// Inicializamos flatpickr con selección de mes/año
-flatpickr("#fecha", {
-  plugins: [
-    new monthSelectPlugin({
-      shorthand: true,
-      dateFormat: "m/Y",
-      altFormat: "m/Y",
-    })
-  ],
-  allowInput: true,
-  onReady: function(selectedDates, dateStr, instance) {
-    const clearBtn = document.createElement('button');
-    clearBtn.textContent = 'Borrar';
-    clearBtn.type = 'button';
-    clearBtn.classList.add('custom-clear-btn');
-    clearBtn.style.padding = '4px 8px';
-    clearBtn.style.fontSize = '13px';
-    clearBtn.style.margin = '5px auto';
-    clearBtn.style.display = 'block';
-    clearBtn.addEventListener('click', function() {
-      instance.clear();
-      instance.close();
-      document.getElementById('form-filtros').submit();
+        // Mostrar si cumple los filtros
+        const mostrar =
+            (filtroCliente === '' || cliente.includes(filtroCliente)) &&
+            (filtroFecha === '' || fecha === filtroFecha) &&
+            (filtroEstado === 'todos' || estado === filtroEstado);
+
+        row.style.display = mostrar ? '' : 'none';
+        const collapseEl = document.querySelector(row.getAttribute('data-bs-target'));
+        if(collapseEl) collapseEl.style.display = mostrar ? '' : 'none';
     });
-    instance.calendarContainer.appendChild(clearBtn);
-  },
+}
+
+// ==============================
+// EVENTOS DE FILTRO EN VIVO
+// ==============================
+document.getElementById('searchClientes').addEventListener('input', filtrarPedidos);
+document.getElementById('fecha').addEventListener('change', filtrarPedidos);
+document.getElementById('estado').addEventListener('change', filtrarPedidos);
+
+window.addEventListener('DOMContentLoaded', () => {
+    filtrarPedidos();  // Aplica el filtro pendiente al cargar
+});
+// ==============================
+// BOTÓN BORRAR FECHA
+// ==============================
+document.getElementById('btn-clear-fecha').addEventListener('click', () => {
+    const inputFecha = document.getElementById('fecha');
+    inputFecha.value = '';
+    actualizarClasesFiltro();
+    filtrarPedidos();
 });
 
-// Botón externo para borrar fecha
-const btnClear = document.getElementById('btn-clear-fecha');
-btnClear.addEventListener('click', () => {
-  const inputFecha = document.getElementById('fecha');
-  inputFecha.value = '';
-  inputFecha.classList.remove('filtro-activo');
-  document.getElementById('form-filtros').submit();
+// ==============================
+// FLATPICKR MES/AÑO
+// ==============================
+flatpickr("#fecha", {
+    plugins: [ new monthSelectPlugin({ shorthand: true, dateFormat: "m/Y", altFormat: "m/Y" }) ],
+    allowInput: true,
+    onReady: function(selectedDates, dateStr, instance) {
+        const clearBtn = document.createElement('button');
+        clearBtn.textContent = 'Borrar';
+        clearBtn.type = 'button';
+        clearBtn.classList.add('custom-clear-btn');
+        clearBtn.style.cssText = 'padding:4px 8px; font-size:13px; margin:5px auto; display:block;';
+        clearBtn.addEventListener('click', () => { instance.clear(); filtrarPedidos(); actualizarClasesFiltro(); });
+        instance.calendarContainer.appendChild(clearBtn);
+    }
 });
+
+// ==============================
+// RESUMEN, IMPRIMIR Y COPIAR
+// ==============================
+function mostrarResumen(){
+  let resumen = {};
+  // Solo pedidos pendientes
+  document.querySelectorAll('tr.accordion-header').forEach(row => {
+    if(row.children[3].innerText.toLowerCase() === 'pendiente'){
+        const collapseEl = document.querySelector(row.getAttribute('data-bs-target'));
+        collapseEl.querySelectorAll('.table-recetas tbody tr').forEach(tr => {
+            const receta = tr.children[0].innerText.trim();
+            const cantidad = parseInt(tr.children[1].innerText);
+            resumen[receta] = (resumen[receta] || 0) + cantidad;
+        });
+    }
+  });
+
+  const tabla = document.getElementById("tablaResumen");
+  tabla.innerHTML = "";
+  Object.keys(resumen).sort().forEach(r => { 
+      tabla.innerHTML += `<tr><td>${r}</td><td><b>${resumen[r]}</b></td></tr>`; 
+  });
+  new bootstrap.Modal(document.getElementById('modalResumen')).show();
+}
+
+function imprimirResumen(){
+  const contenido = document.getElementById("tablaResumen").innerHTML;
+  const ventana = window.open("", "", "width=600,height=600");
+  ventana.document.write(`
+    <html><head><title>Resumen recetas pendientes</title>
+    <style>body{font-family:Arial} table{width:100%;border-collapse:collapse} td,th{border:1px solid black;padding:8px;text-align:center}</style>
+    </head>
+    <body>
+    <h2>Recetas totales pendientes</h2>
+    <table><tr><th>Receta</th><th>Cantidad</th></tr>${contenido}</table>
+    </body></html>`);
+  ventana.print();
+}
+
+function copiarRecetas(){
+    const tabla = document.getElementById("tabla_recetas_totales");
+    const filas = document.querySelectorAll("#tablaResumen tr");
+    if(filas.length === 0){ mostrarAlerta("Primero genere el resumen","warning"); return; }
+    let rango = document.createRange();
+    rango.selectNode(tabla);
+    let seleccion = window.getSelection();
+    seleccion.removeAllRanges();
+    seleccion.addRange(rango);
+    document.execCommand("copy");
+    seleccion.removeAllRanges();
+    mostrarAlerta("Recetas copiadas correctamente","success");
+}
 </script>
+
 {% endblock %}

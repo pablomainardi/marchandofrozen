@@ -12,8 +12,14 @@
   <button type="button" class="btn btn-secondary" onclick="seleccionarTodos(true)">Marcar todos</button>
   <button type="button" class="btn btn-secondary" onclick="seleccionarTodos(false)">Desmarcar todos</button>
 </div>
+<a href="{{ url_for('download_db') }}" class="btn btn-primary">
+    📥 Descargar base de datos
+</a>
 
 <form action="{{ url_for('backups.eliminar_backups') }}" method="POST" onsubmit="return confirm('¿Eliminar backups seleccionados?')">
+  <hr>
+  <button type="submit" class="btn btn-danger btn-sm">Eliminar seleccionados</button>
+  <hr>
   <table class="table table-striped table-hover">
     <thead>
       <tr>
@@ -36,10 +42,13 @@
       {% endif %}
     </tbody>
   </table>
-
-  <button type="submit" class="btn btn-danger">Eliminar seleccionados</button>
 </form>
-
+<!-- backup.html -->
+<form action="{{ url_for('backups.subir_base') }}" method="POST" onsubmit="return confirm('¿Estás seguro que querés subir toda la base de datos?');" style="display:inline;">
+    <button type="submit" class="btn btn-primary">
+        Subir Base de Datos
+    </button>
+</form>
 <script>
 function seleccionarTodos(estado) {
   document.querySelectorAll('input[name="archivos"]').forEach(cb => cb.checked = estado);

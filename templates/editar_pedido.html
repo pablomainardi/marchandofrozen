@@ -175,9 +175,9 @@
 
   actualizarTotales();
 
-  {% if pedido.estado == 'finalizado' %}
+    {% if pedido.estado == 'finalizado' %}
     // Deshabilita todos los campos de edición si el pedido está finalizado.
     document.querySelectorAll('input, select, button').forEach(el => el.disabled = true);
-  {% endif %}
+    {% endif %}
 </script>
 {% endblock %}
